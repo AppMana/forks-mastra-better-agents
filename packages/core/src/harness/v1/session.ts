@@ -128,9 +128,11 @@ export class Session {
     return (await this.#resolveMemory()).saveMessages({ messages });
   }
 
-  async message<OUTPUT = undefined>(options: MessageOptions<OUTPUT> & { stream: true }): Promise<AgentStream<OUTPUT>>;
-  async message<OUTPUT = undefined>(options: MessageOptions<OUTPUT>): Promise<AgentResult<OUTPUT>>;
-  async message<OUTPUT = undefined>(
+  async sendMessage<OUTPUT = undefined>(
+    options: MessageOptions<OUTPUT> & { stream: true },
+  ): Promise<AgentStream<OUTPUT>>;
+  async sendMessage<OUTPUT = undefined>(options: MessageOptions<OUTPUT>): Promise<AgentResult<OUTPUT>>;
+  async sendMessage<OUTPUT = undefined>(
     options: MessageOptions<OUTPUT>,
   ): Promise<AgentResult<OUTPUT> | AgentStream<OUTPUT>> {
     const agent = this.#getAgent(this.#mode);
@@ -153,7 +155,7 @@ export class Session {
     }
   }
 
-  queue<OUTPUT = undefined>(options: QueueOptions<OUTPUT>): Promise<AgentResult<OUTPUT>> {
+  queueMessage<OUTPUT = undefined>(options: QueueOptions<OUTPUT>): Promise<AgentResult<OUTPUT>> {
     return new Promise((resolve, reject) => {
       this.#pendingQueue.push({
         options: options as unknown as QueueOptions,
@@ -254,7 +256,7 @@ export class Session {
         const item = this.#pendingQueue.shift();
         if (!item) continue;
         try {
-          const result = await this.message(item.options);
+          const result = await this.sendMessage(item.options);
           item.resolve(result);
         } catch (error) {
           item.reject(error);

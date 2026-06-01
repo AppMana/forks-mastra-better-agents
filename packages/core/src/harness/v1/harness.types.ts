@@ -66,7 +66,7 @@ export interface HarnessConfigCommon<MODES extends HarnessMode[]> {
 
   //   /**
   //    * Maximum number of items allowed to wait in `pendingQueue` per session.
-  //    * `session.queue(...)` rejects with `HarnessQueueFullError` when full.
+  //    * `session.queueMessage(...)` rejects with `HarnessQueueFullError` when full.
   //    * Capacity check + durable append are atomic per session. Defaults to 100.
   //    */
   //   maxQueueDepth?: number;
