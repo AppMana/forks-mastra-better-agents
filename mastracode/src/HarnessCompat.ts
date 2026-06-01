@@ -17,6 +17,7 @@ type HarnessV1Session<TState = {}> = Session<TState>;
 type SessionStateFields = {
   currentModelId?: string;
   modeId?: string;
+  subagentModelId?: string;
 };
 
 export function v1ModeToLegacy<TState = {}>(mode: HarnessMode, agent: Agent): HarnessModeLegacy<TState> {
@@ -43,70 +44,73 @@ export class HarnessCompat<TState = {}> extends HarnessLegacy<TState> {
 
   getState(): Readonly<TState> {
     const state = super.getState() as Readonly<TState> & SessionStateFields;
-    let session: Session<TState> | undefined;
-    try {
-      session = this.#session;
-    } catch {
-      session = undefined;
-    }
-
-    if (!session) {
+    if (!this.#session) {
       return state;
     }
 
     return {
       ...state,
-      ...session.getState(),
-      currentModelId: session.getModelId(),
-      modeId: session.getMode().id,
+      currentModelId: this.#session.getModelId(),
+      modeId: this.#session.getMode().id,
+      subagentModelId: this.#session.getSubagentModelId(),
     } as Readonly<TState>;
   }
 
   async setState(updates: Partial<TState>): Promise<void> {
-    const { currentModelId, modeId, ...harnessUpdates } = updates as Partial<TState> & SessionStateFields;
-    let session: Session<TState> | undefined;
-    try {
-      session = this.#session;
-    } catch {
-      session = undefined;
-    }
+    const { currentModelId, modeId, subagentModelId, ...harnessUpdates } = updates as Partial<TState> &
+      SessionStateFields;
 
-    if (session) {
+    if (this.#session) {
       if (typeof currentModelId === 'string') {
-        session.setModelId(currentModelId);
+        this.#session.setModelId(currentModelId);
       }
-      if (typeof modeId === 'string' && modeId !== session.getMode().id) {
+      if (Object.prototype.hasOwnProperty.call(updates, 'subagentModelId')) {
+        this.#session.setSubagentModelId(subagentModelId);
+      }
+      if (typeof modeId === 'string' && modeId !== this.#session.getMode().id) {
         await this.switchMode({ modeId });
       }
     }
 
     if (Object.keys(harnessUpdates).length > 0) {
-      if (session) {
-        await session.setState(harnessUpdates as Partial<TState>);
-      }
       await super.setState(harnessUpdates as Partial<TState>);
     }
   }
 
   getSubagentModelId({ agentType }: { agentType?: string } = {}): string | null {
-    return super.getSubagentModelId({ agentType });
+    const state = super.getState() as Record<string, unknown>;
+    if (agentType) {
+      const perType = state[`subagentModelId_${agentType}`];
+      if (typeof perType === 'string') return perType;
+    }
+
+    return this.#session?.getSubagentModelId() ?? null;
   }
 
   async setSubagentModelId({ modelId, agentType }: { modelId: string; agentType?: string }): Promise<void> {
-    await super.setSubagentModelId({ modelId, agentType });
+    if (agentType) {
+      await super.setSubagentModelId({ modelId, agentType });
+      return;
+    }
+
+    this.#session?.setSubagentModelId(modelId);
+    await this.setThreadSetting({ key: 'subagentModelId', value: modelId });
   }
 
   async switchThread({ threadId }: { threadId: string }): Promise<void> {
-    const currentModelId = (this.getState() as SessionStateFields).currentModelId;
+    const modes = this.listModes();
 
+    const legacyState = super.getState() as Record<string, unknown>;
     const session = await this.#harnessV1.session({
       threadId,
       resourceId: this.getResourceId(),
+      subagentModelId: typeof legacyState['subagentModelId'] === 'string' ? legacyState['subagentModelId'] : undefined,
     });
     this.#session = session;
 
-    if (typeof currentModelId === 'string' && currentModelId.length > 0) {
-      session.setModelId(currentModelId);
+    const defaultModelId = modes.find(mode => mode.id === session.getMode().id)?.defaultModelId;
+    if (defaultModelId) {
+      session.setModelId(defaultModelId);
     }
 
     await super.switchThread({ threadId });
@@ -230,24 +234,12 @@ export class HarnessCompat<TState = {}> extends HarnessLegacy<TState> {
       throw new Error(`Mode not found: ${modeId}`);
     }
 
-    if (this.#session) {
-      this.#session.setMode(mode);
+    if (!this.#session) {
+      throw new Error('No active session to switch mode');
     }
+
+    this.#session.setMode(mode);
 
     await super.switchMode({ modeId });
-  }
-
-  /**
-   * Activate a skill on the current v1 session.
-   *
-   * Pass-through to `Session.useSkill` — returns the resolved instructions
-   * string, or throws `HarnessSkillNotFoundError` if the skill is missing.
-   * Throws if there is no active session.
-   */
-  async useSkill(name: string, opts?: { args?: Record<string, unknown> }): Promise<string> {
-    if (!this.#session) {
-      throw new Error('No active session to use skill');
-    }
-    return this.#session.useSkill(name, opts);
   }
 }
