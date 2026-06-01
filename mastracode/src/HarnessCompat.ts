@@ -1,7 +1,7 @@
 import type { Agent } from '@mastra/core/agent';
 import { Harness as HarnessLegacy } from '@mastra/core/harness';
 import type { HarnessConfig, HarnessMode as HarnessModeLegacy, HarnessThread } from '@mastra/core/harness';
-import type { Session, HarnessMode, Harness } from '@mastra/core/harness/v1';
+import type { Session, HarnessMode, Harness, MessageOptions as V1MessageOptions } from '@mastra/core/harness/v1';
 
 type CloneSessionOptions = {
   sessionId?: string;
@@ -14,6 +14,14 @@ type CloneSessionOptions = {
 };
 
 type HarnessV1Session = Session;
+
+type SendMessageArgs = {
+  content: string;
+  files?: Array<{ data: string; mediaType: string; filename?: string }>;
+  tracingContext?: unknown;
+  tracingOptions?: unknown;
+  requestContext?: unknown;
+};
 
 export function v1ModeToLegacy<TState = {}>(mode: HarnessMode, agent: Agent): HarnessModeLegacy<TState> {
   const meta = mode.metadata ?? {};
@@ -35,6 +43,30 @@ export class HarnessCompat<TState = {}> extends HarnessLegacy<TState> {
     super(args);
 
     this.#harnessV1 = harnessV1;
+  }
+
+  async #ensureSession(): Promise<Session> {
+    if (!this.#session) {
+      const threadId = this.getCurrentThreadId() ?? (await this.selectOrCreateThread()).id;
+      this.#session = await this.#harnessV1.session({
+        threadId,
+        resourceId: this.getResourceId(),
+      });
+    }
+
+    return this.#session;
+  }
+
+  async sendMessage(args: SendMessageArgs): Promise<void> {
+    const session = await this.#ensureSession();
+    const options = { content: args.content } satisfies V1MessageOptions;
+    await session.sendMessage(options);
+  }
+
+  async queueMessage(args: { content: string }): Promise<void> {
+    const session = await this.#ensureSession();
+    const options = { content: args.content } satisfies V1MessageOptions;
+    await session.queueMessage(options);
   }
 
   async switchThread({ threadId }: { threadId: string }): Promise<void> {
