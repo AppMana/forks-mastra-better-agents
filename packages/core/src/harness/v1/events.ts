@@ -41,12 +41,29 @@ export interface ThreadClonedEvent extends HarnessEventBase {
   title?: string;
 }
 
+export interface AgentStartEvent extends HarnessEventBase {
+  type: 'agent_start';
+}
+
+export interface AgentEndEvent extends HarnessEventBase {
+  type: 'agent_end';
+  reason: 'complete' | 'aborted' | 'error';
+  error?: string;
+}
+
 export interface CustomEvent extends HarnessEventBase {
   type: string;
   payload?: JsonSerializable;
 }
 
-export type HarnessEvent = SessionCreatedEvent | ModeChangedEvent | ModelChangedEvent | ThreadClonedEvent | CustomEvent;
+export type HarnessEvent =
+  | SessionCreatedEvent
+  | ModeChangedEvent
+  | ModelChangedEvent
+  | ThreadClonedEvent
+  | AgentStartEvent
+  | AgentEndEvent
+  | CustomEvent;
 export type HarnessEventListener = (event: HarnessEvent) => void | Promise<void>;
 export type HarnessEventUnsubscribe = () => void;
 
@@ -250,7 +267,14 @@ export class EventEmitter {
   }
 }
 
-const RESERVED_EVENT_TYPES = new Set(['session_created', 'mode_changed', 'model_changed', 'thread_cloned']);
+const RESERVED_EVENT_TYPES = new Set([
+  'session_created',
+  'mode_changed',
+  'model_changed',
+  'thread_cloned',
+  'agent_start',
+  'agent_end',
+]);
 
 const RESERVED_EVENT_PREFIXES = ['session_', 'thread_'];
 

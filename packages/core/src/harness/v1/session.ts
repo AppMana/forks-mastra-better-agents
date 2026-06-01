@@ -1,12 +1,20 @@
 import { randomUUID } from 'node:crypto';
 
 import { RequestContext } from '@internal/core/request-context';
+import type { Agent, AgentExecutionOptionsBase, ToolsInput } from '../../agent';
 import type { MastraDBMessage } from '../../agent/message-list';
 import type { MastraMemory, StorageThreadType } from '../../memory';
 import type { DynamicArgument } from '../../types';
 import type { EventEmitter } from './events';
 import type { HarnessMode } from './mode';
-import type { CloneSessionOptions, SessionConfig } from './session.types';
+import type {
+  AgentResult,
+  AgentStream,
+  CloneSessionOptions,
+  MessageOptions,
+  QueueOptions,
+  SessionConfig,
+} from './session.types';
 
 export class Session {
   /** Stable identity. Frozen at construction. */
@@ -18,6 +26,13 @@ export class Session {
   readonly #lastActivityAt: Date;
   readonly #memory: MastraMemory | DynamicArgument<MastraMemory>;
   readonly #events: EventEmitter;
+  readonly #getAgent: (mode: HarnessMode) => Agent;
+  #pendingQueue: Array<{
+    options: QueueOptions;
+    resolve: (result: AgentResult) => void;
+    reject: (error: unknown) => void;
+  }> = [];
+  #draining = false;
   // readonly parentSessionId?: string;
   // readonly subagentDepth: number;
 
@@ -35,6 +50,7 @@ export class Session {
     this.#lastActivityAt = config.lastActivityAt;
     this.#memory = config.memory;
     this.#events = config.events;
+    this.#getAgent = config.getAgent;
   }
 
   get id(): string {
@@ -81,6 +97,7 @@ export class Session {
       lastActivityAt: result.thread.updatedAt,
       memory: this.#memory,
       events: this.#events.scoped({ sessionId: cloneId }),
+      getAgent: this.#getAgent,
     });
 
     this.#events.emit({
@@ -111,6 +128,42 @@ export class Session {
     return (await this.#resolveMemory()).saveMessages({ messages });
   }
 
+  async message<OUTPUT = undefined>(options: MessageOptions<OUTPUT> & { stream: true }): Promise<AgentStream<OUTPUT>>;
+  async message<OUTPUT = undefined>(options: MessageOptions<OUTPUT>): Promise<AgentResult<OUTPUT>>;
+  async message<OUTPUT = undefined>(
+    options: MessageOptions<OUTPUT>,
+  ): Promise<AgentResult<OUTPUT> | AgentStream<OUTPUT>> {
+    const agent = this.#getAgent(this.#mode);
+    const executionOptions = await this.#buildAgentExecutionOptions(options);
+
+    this.#events.emit({ type: 'agent_start' });
+    try {
+      const result = options.stream
+        ? await this.#streamAgent(agent, options.content, executionOptions)
+        : await this.#generateAgent(agent, options.content, executionOptions);
+      this.#events.emit({ type: 'agent_end', reason: 'complete' });
+      return result;
+    } catch (error) {
+      this.#events.emit({
+        type: 'agent_end',
+        reason: options.abortSignal?.aborted ? 'aborted' : 'error',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  queue<OUTPUT = undefined>(options: QueueOptions<OUTPUT>): Promise<AgentResult<OUTPUT>> {
+    return new Promise((resolve, reject) => {
+      this.#pendingQueue.push({
+        options: options as unknown as QueueOptions,
+        resolve: resolve as (result: AgentResult) => void,
+        reject,
+      });
+      void this.#drainQueue();
+    });
+  }
+
   getModelId(): string {
     return this.#modelId;
   }
@@ -132,6 +185,84 @@ export class Session {
     this.#mode = mode;
     if (mode.id !== previousModeId) {
       this.#events.emit({ type: 'mode_changed', modeId: mode.id, previousModeId });
+    }
+  }
+
+  async #streamAgent<OUTPUT>(
+    agent: Agent,
+    content: MessageOptions<OUTPUT>['content'],
+    executionOptions: AgentExecutionOptionsBase<OUTPUT> & { model?: MessageOptions<OUTPUT>['model'] },
+  ): Promise<AgentStream<OUTPUT>> {
+    const stream = agent.stream.bind(agent) as unknown as (
+      messages: MessageOptions<OUTPUT>['content'],
+      options: AgentExecutionOptionsBase<OUTPUT> & {
+        structuredOutput?: MessageOptions<OUTPUT>['structuredOutput'];
+        model?: MessageOptions<OUTPUT>['model'];
+      },
+    ) => Promise<AgentStream<OUTPUT>>;
+    return stream(content, executionOptions);
+  }
+
+  async #generateAgent<OUTPUT>(
+    agent: Agent,
+    content: MessageOptions<OUTPUT>['content'],
+    executionOptions: AgentExecutionOptionsBase<OUTPUT> & { model?: MessageOptions<OUTPUT>['model'] },
+  ): Promise<AgentResult<OUTPUT>> {
+    const generate = agent.generate.bind(agent) as unknown as (
+      messages: MessageOptions<OUTPUT>['content'],
+      options: AgentExecutionOptionsBase<OUTPUT> & {
+        structuredOutput?: MessageOptions<OUTPUT>['structuredOutput'];
+        model?: MessageOptions<OUTPUT>['model'];
+      },
+    ) => Promise<AgentResult<OUTPUT>>;
+    return generate(content, executionOptions);
+  }
+
+  async #buildAgentExecutionOptions<OUTPUT>(
+    options: MessageOptions<OUTPUT>,
+  ): Promise<AgentExecutionOptionsBase<OUTPUT> & { model?: MessageOptions<OUTPUT>['model'] }> {
+    const toolsets = this.#buildToolsets(this.#mode, options.additionalTools);
+    return {
+      memory: { thread: this.#threadId, resource: this.#resourceId },
+      requestContext: await this.#buildRequestContext(),
+      instructions: options.instructions ?? this.#mode.instructions,
+      model: options.model ?? this.#modelId,
+      ...(toolsets ? { toolsets } : {}),
+      ...(options.structuredOutput ? { structuredOutput: options.structuredOutput } : {}),
+      ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+      ...(options.stopWhen !== undefined ? { stopWhen: options.stopWhen } : {}),
+      ...(options.onStepFinish ? { onStepFinish: options.onStepFinish } : {}),
+      ...(options.onFinish ? { onFinish: options.onFinish } : {}),
+      ...(options.prepareStep ? { prepareStep: options.prepareStep } : {}),
+      ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
+    };
+  }
+
+  #buildToolsets(mode: HarnessMode, callAdditional?: ToolsInput): Record<string, ToolsInput> | undefined {
+    const toolsets: Record<string, ToolsInput> = {};
+    if (mode.tools) toolsets[`mode:${mode.id}`] = mode.tools;
+    if (mode.additionalTools) toolsets[`mode:${mode.id}:add`] = mode.additionalTools;
+    if (callAdditional) toolsets['call:additional'] = callAdditional;
+    return Object.keys(toolsets).length === 0 ? undefined : toolsets;
+  }
+
+  async #drainQueue(): Promise<void> {
+    if (this.#draining) return;
+    this.#draining = true;
+    try {
+      while (this.#pendingQueue.length > 0) {
+        const item = this.#pendingQueue.shift();
+        if (!item) continue;
+        try {
+          const result = await this.message(item.options);
+          item.resolve(result);
+        } catch (error) {
+          item.reject(error);
+        }
+      }
+    } finally {
+      this.#draining = false;
+      if (this.#pendingQueue.length > 0) void this.#drainQueue();
     }
   }
 

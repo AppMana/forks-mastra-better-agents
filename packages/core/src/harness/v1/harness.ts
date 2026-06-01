@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
+import type { Agent } from '../../agent';
+import type { Mastra } from '../../mastra';
 import type { MastraMemory } from '../../memory';
 import type { MastraCompositeStore } from '../../storage';
 import type { HarnessStorage, SessionRecord } from '../../storage/domains/harness';
@@ -34,6 +36,8 @@ export class Harness<MODES extends HarnessMode[]> {
   readonly #compositeStorage?: MastraCompositeStore;
   readonly #memory: MastraMemory | DynamicArgument<MastraMemory>;
   readonly #events: EventEmitter;
+  readonly #agents?: Record<string, Agent>;
+  readonly #mastra?: Mastra;
 
   constructor(config: HarnessConfig<MODES>) {
     if (!config.modes.length) {
@@ -46,6 +50,8 @@ export class Harness<MODES extends HarnessMode[]> {
     this.#compositeStorage = config.mastra?.getStorage();
     this.#memory = config.memory;
     this.#events = new EventEmitter();
+    this.#agents = config.agents;
+    this.#mastra = config.mastra;
 
     const modes = config.modes ?? [];
     for (const mode of modes) {
@@ -56,6 +62,7 @@ export class Harness<MODES extends HarnessMode[]> {
       if (mode.tools && mode.additionalTools) {
         throw new Error(`Mode "${mode.id} cannot set both "tools" and "additionalTools" - choose replace OR augment`);
       }
+      this.getAgentForMode(mode);
       this.#modesById.set(mode.id, mode);
     }
   }
@@ -83,6 +90,14 @@ export class Harness<MODES extends HarnessMode[]> {
    */
   getMode(modeId: string): HarnessMode | undefined {
     return this.#modesById.get(modeId);
+  }
+
+  getAgentForMode(mode: HarnessMode): Agent {
+    const agent = this.#agents?.[mode.agentId] ?? this.#mastra?.getAgent(mode.agentId as never);
+    if (!agent) {
+      throw new Error(`Mode "${mode.id}" references unknown agent "${mode.agentId}"`);
+    }
+    return agent;
   }
 
   async listSessions(): Promise<SessionRecord[]> {
@@ -203,6 +218,7 @@ export class Harness<MODES extends HarnessMode[]> {
       lastActivityAt: record.lastActivityAt,
       memory: this.#memory,
       events: this.#events.scoped({ sessionId: record.id }),
+      getAgent: mode => this.getAgentForMode(mode),
     });
   }
 
