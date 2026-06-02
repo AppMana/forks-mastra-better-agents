@@ -259,12 +259,14 @@ export function workflowLoopStream<Tools extends ToolSet = ToolSet, OUTPUT = und
             resumeData: resumeContext.resumeData,
             ...createObservabilityContext(rest.modelSpanTracker?.getTracingContext()),
             requestContext,
+            systemActor: rest.systemActor,
             label: toolCallId,
           })
         : await run.start({
             inputData: initialData,
             ...createObservabilityContext(rest.modelSpanTracker?.getTracingContext()),
             requestContext,
+            systemActor: rest.systemActor,
           });
 
       if (executionResult.status !== 'success') {

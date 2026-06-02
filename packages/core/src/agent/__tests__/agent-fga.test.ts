@@ -112,6 +112,26 @@ describe('Agent FGA checks', () => {
       expect(fgaProvider.require).not.toHaveBeenCalled();
     });
 
+    it('should bypass membership resolution for a tenant-scoped system actor', async () => {
+      const fgaProvider = createMockFGAProvider(true);
+      const mastra = createMockMastra(fgaProvider);
+      const model = createMockModel();
+
+      const agent = new Agent({ id: 'test-agent', name: 'test-agent', instructions: 'test', model });
+      (agent as any).__registerMastra(mastra);
+
+      const requestContext = new RequestContext();
+      requestContext.set('organizationId', 'org-1');
+
+      await agent.generate('test', {
+        requestContext: requestContext as any,
+        systemActor: { actorKind: 'system', sourceWorkflow: 'nightly-workflow' },
+      });
+
+      expect(fgaProvider.require).not.toHaveBeenCalled();
+      expect(model.doGenerateCalls).toHaveLength(1);
+    });
+
     it('should not call FGA check when no FGA provider configured', async () => {
       const mastra = createMockMastra();
       const model = createMockModel();

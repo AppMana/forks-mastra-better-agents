@@ -1,4 +1,5 @@
 import { TripWire } from '../agent/trip-wire';
+import type { SystemActorSignal } from '../auth/ee';
 import { RequestContext } from '../di';
 import { MastraError, ErrorDomain, ErrorCategory } from '../error';
 import type { SerializedError } from '../error';
@@ -229,6 +230,7 @@ export class DefaultExecutionEngine extends ExecutionEngine {
       startedAt: number;
       abortController: AbortController;
       requestContext: RequestContext;
+      systemActor?: SystemActorSignal;
       outputWriter?: OutputWriter;
       stepSpan?: Span<SpanType.WORKFLOW_STEP>;
       perStep?: boolean;
@@ -699,6 +701,7 @@ export class DefaultExecutionEngine extends ExecutionEngine {
       delay?: number;
     };
     requestContext: RequestContext;
+    systemActor?: SystemActorSignal;
     workflowSpan?: Span<SpanType.WORKFLOW_RUN>;
     abortController: AbortController;
     outputWriter?: OutputWriter;
@@ -803,6 +806,7 @@ export class DefaultExecutionEngine extends ExecutionEngine {
         abortController: params.abortController,
         pubsub: params.pubsub,
         requestContext: currentRequestContext,
+        systemActor: params.systemActor,
         outputWriter: params.outputWriter,
         disableScorers,
         perStep,

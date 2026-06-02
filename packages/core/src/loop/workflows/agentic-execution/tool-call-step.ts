@@ -59,6 +59,7 @@ export function createToolCallStep<Tools extends ToolSet = ToolSet, OUTPUT = und
   logger,
   agentId,
   mastra,
+  systemActor,
 }: OuterLLMRun<Tools, OUTPUT>) {
   return createStep({
     id: 'toolCallStep',
@@ -512,6 +513,7 @@ export function createToolCallStep<Tools extends ToolSet = ToolSet, OUTPUT = und
           workspace: _internal?.stepWorkspace,
           // Forward requestContext so tools receive values set by the workflow step
           requestContext,
+          systemActor,
           // Let tools that read thread history mid-stream (e.g. forked subagents
           // cloning the parent thread) drain the save queue so the store reflects
           // the latest user/assistant messages before they read.
@@ -701,19 +703,14 @@ export function createToolCallStep<Tools extends ToolSet = ToolSet, OUTPUT = und
         const toolFgaProvider = mastra?.getServer?.()?.fga;
         if (toolFgaProvider) {
           const fgaUser = requestContext?.get('user');
-          const { checkFGA, FGADeniedError } = await import('../../../auth/ee/fga-check');
-          if (!fgaUser) {
-            throw new FGADeniedError(
-              { id: 'unknown' },
-              { type: 'tool', id: inputData.toolName },
-              MastraFGAPermissions.TOOLS_EXECUTE,
-            );
-          }
+          const { checkFGA } = await import('../../../auth/ee/fga-check');
           await checkFGA({
             fgaProvider: toolFgaProvider,
             user: fgaUser,
             resource: { type: 'tool', id: inputData.toolName },
             permission: MastraFGAPermissions.TOOLS_EXECUTE,
+            requestContext,
+            systemActor,
           });
         }
 
