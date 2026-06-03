@@ -246,10 +246,10 @@ export class HarnessCompat<TState = {}> extends HarnessLegacy<TState> {
    * string, or throws `HarnessSkillNotFoundError` if the skill is missing.
    * Throws if there is no active session.
    */
-  async useSkill(name: string, opts?: { args?: Record<string, unknown> }): Promise<string> {
+  async useSkill(name: string, _opts?: { args?: Record<string, unknown> }): Promise<string> {
     if (!this.#session) {
       throw new Error('No active session to use skill');
     }
-    return this.#session.useSkill(name, opts);
+    return this.#session.useSkill(name);
   }
 }
