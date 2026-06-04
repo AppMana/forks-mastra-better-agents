@@ -2,5 +2,5 @@ packages:
   - '.'
 
 allowBuilds:
-  esbuild: set this to true or false
-  snyk: set this to true or false
+  esbuild: true
+  snyk: false
