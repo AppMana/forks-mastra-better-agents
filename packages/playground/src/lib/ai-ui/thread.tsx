@@ -1,8 +1,8 @@
 import type { MessagePrimitive } from '@assistant-ui/react';
 import { ComposerPrimitive, ThreadPrimitive, useComposer, useComposerRuntime } from '@assistant-ui/react';
-import { Avatar, Button, ButtonsGroup, cn, useAutoscroll } from '@mastra/playground-ui';
-import { ArrowUp, EyeIcon, Mic, PlusIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Avatar, Button, ButtonsGroup, cn, toast, useAutoscroll } from '@mastra/playground-ui';
+import { ArrowUp, EyeIcon, Mic, PlusIcon, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AttachFileDialog } from './attachments/attach-file-dialog';
 import { ComposerAttachments } from './attachments/attachment';
 import { BracketOverlay } from './components/bracket-overlay';
@@ -17,6 +17,12 @@ import { ComposerModelSwitcher, ComposerModelWarning } from '@/domains/agents/co
 import { usePermissions } from '@/domains/auth/hooks/use-permissions';
 import { useThreadInput } from '@/domains/conversation';
 import { useSpeechRecognition } from '@/domains/voice/hooks/use-speech-recognition';
+import { useWorkspaces, useWriteWorkspaceFileFromFile } from '@/domains/workspace/hooks';
+import {
+  buildWorkspaceUploadNotice,
+  buildWorkspaceUploadPath,
+  selectWorkspaceForUpload,
+} from '@/domains/workspace/workspace-upload';
 import { Link } from '@/lib/link';
 // import { useBackgroundTaskStream } from '@/hooks';
 
@@ -292,6 +298,40 @@ interface ComposerActionRowProps extends ComposerActionProps {
 
 const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwitcher }: ComposerActionRowProps) => {
   const [isAddAttachmentDialogOpen, setIsAddAttachmentDialogOpen] = useState(false);
+  const workspaceUploadInputRef = useRef<HTMLInputElement>(null);
+  const composerRuntime = useComposerRuntime();
+  const { data: workspacesData } = useWorkspaces();
+  const writeWorkspaceFile = useWriteWorkspaceFileFromFile();
+  const selectedWorkspace = useMemo(
+    () => selectWorkspaceForUpload(workspacesData?.workspaces ?? [], agentId),
+    [agentId, workspacesData?.workspaces],
+  );
+
+  const handleWorkspaceUpload = async (files: FileList | null) => {
+    if (!selectedWorkspace || !files || files.length === 0) return;
+
+    const uploadedPaths: string[] = [];
+
+    try {
+      for (const file of Array.from(files)) {
+        const path = buildWorkspaceUploadPath(file.name);
+        await writeWorkspaceFile.mutateAsync({
+          workspaceId: selectedWorkspace.id,
+          path,
+          file,
+          recursive: true,
+        });
+        uploadedPaths.push(path);
+      }
+
+      const currentText = (composerRuntime.getState() as { text?: string }).text ?? '';
+      const notice = buildWorkspaceUploadNotice(uploadedPaths);
+      composerRuntime.setText([currentText.trim(), notice].filter(Boolean).join('\n\n'));
+      toast.success(`Uploaded ${uploadedPaths.length} workspace file${uploadedPaths.length === 1 ? '' : 's'}`);
+    } catch (error) {
+      toast.error(`Failed to upload workspace file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
 
   return (
     <>
@@ -332,11 +372,32 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
                 <PlusIcon className="h-5 w-5 text-neutral3 hover:text-neutral6" />
               </Button>
             )}
+            {canExecute && selectedWorkspace && (
+              <Button
+                variant="default"
+                size="icon-md"
+                type="button"
+                tooltip={`Upload to workspace: ${selectedWorkspace.name}`}
+                onClick={() => workspaceUploadInputRef.current?.click()}
+              >
+                <Upload className="h-5 w-5 text-neutral3 hover:text-neutral6" />
+              </Button>
+            )}
             {canExecute && <SpeechInput agentId={agentId} />}
           </ButtonsGroup>
           <ComposerSendButton canExecute={canExecute} />
         </div>
       </div>
+      <input
+        ref={workspaceUploadInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={event => {
+          void handleWorkspaceUpload(event.currentTarget.files);
+          event.currentTarget.value = '';
+        }}
+      />
       <AttachFileDialog open={isAddAttachmentDialogOpen} onOpenChange={setIsAddAttachmentDialogOpen} />
     </>
   );

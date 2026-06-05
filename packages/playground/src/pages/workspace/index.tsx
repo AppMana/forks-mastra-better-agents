@@ -15,7 +15,7 @@ import {
   toast,
 } from '@mastra/playground-ui';
 import { FileText, Wand2, Search, ChevronDown, Bot, Server } from 'lucide-react';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useSearchParams, useParams, useNavigate } from 'react-router';
 import { isWorkspaceNotSupportedError } from '@/domains/workspace/compatibility';
 import { AddSkillDialog, FileBrowser, FileViewer, SkillsTable } from '@/domains/workspace/components';
@@ -32,9 +32,11 @@ import {
   useDeleteWorkspaceFile,
   useCreateWorkspaceDirectory,
   useWorkspaceFile,
+  useWriteWorkspaceFileFromFile,
 } from '@/domains/workspace/hooks/use-workspace';
 import { useWorkspaceSkills, useSearchWorkspaceSkills } from '@/domains/workspace/hooks/use-workspace-skills';
 import type { WorkspaceItem } from '@/domains/workspace/types';
+import { buildWorkspaceUploadPath } from '@/domains/workspace/workspace-upload';
 
 type TabType = 'files' | 'skills';
 
@@ -47,6 +49,7 @@ export default function Workspace() {
   const [showAddSkillDialog, setShowAddSkillDialog] = useState(false);
   const [removingSkillName, setRemovingSkillName] = useState<string | null>(null);
   const [updatingSkillName, setUpdatingSkillName] = useState<string | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   // Track if we installed a skill that wasn't discovered (client-side only, resets on refresh)
   const [hasUndiscoveredInstall, setHasUndiscoveredInstall] = useState(false);
 
@@ -133,6 +136,7 @@ export default function Workspace() {
   });
   const deleteFile = useDeleteWorkspaceFile();
   const createDirectory = useCreateWorkspaceDirectory();
+  const writeFileFromFile = useWriteWorkspaceFileFromFile();
 
   // Selected file content - pass workspaceId
   const { data: fileContent, isLoading: isLoadingFileContent } = useWorkspaceFile(selectedFile ?? '', {
@@ -163,6 +167,32 @@ export default function Workspace() {
   // Can manage skills (install/remove/check/update) if we have filesystem and not read-only
   // None of these operations require sandbox - all are done via GitHub API + filesystem
   const canManageSkills = hasFilesystem && !isReadOnly;
+
+  const handleUploadFiles = useCallback(
+    async (files: FileList | null) => {
+      if (!effectiveWorkspaceId || !files || files.length === 0) return;
+
+      const uploadDirectory = currentPath === '.' ? '' : currentPath;
+
+      try {
+        await Promise.all(
+          Array.from(files).map(file =>
+            writeFileFromFile.mutateAsync({
+              workspaceId: effectiveWorkspaceId,
+              path: buildWorkspaceUploadPath(file.name, uploadDirectory),
+              file,
+              recursive: true,
+            }),
+          ),
+        );
+        toast.success(`Uploaded ${files.length} file${files.length === 1 ? '' : 's'}`);
+        void refetchFiles();
+      } catch (error) {
+        toast.error(`Failed to upload file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    },
+    [currentPath, effectiveWorkspaceId, refetchFiles, writeFileFromFile],
+  );
 
   // Derive writable mounts for CompositeFilesystem
   const mounts = workspaceInfo?.mounts;
@@ -516,6 +546,7 @@ export default function Workspace() {
                     onNavigate={setCurrentPath}
                     onFileSelect={setSelectedFile}
                     onRefresh={() => refetchFiles()}
+                    onUpload={isReadOnly ? undefined : () => uploadInputRef.current?.click()}
                     onCreateDirectory={
                       isReadOnly
                         ? undefined
@@ -527,6 +558,16 @@ export default function Workspace() {
                         : path =>
                             deleteFile.mutate({ path, recursive: true, force: true, workspaceId: effectiveWorkspaceId })
                     }
+                  />
+                  <input
+                    ref={uploadInputRef}
+                    type="file"
+                    multiple
+                    hidden
+                    onChange={event => {
+                      void handleUploadFiles(event.currentTarget.files);
+                      event.currentTarget.value = '';
+                    }}
                   />
                   {selectedFile && (
                     <FileViewer
