@@ -1,5 +1,16 @@
 # @mastra/client-js
 
+## 1.23.3-alpha.0
+
+### Patch Changes
+
+- Fixed subscribed client tool continuations so browser-provided tool results keep their original inputs and client tools remain available across continuation runs. ([#17603](https://github.com/mastra-ai/mastra/pull/17603))
+
+- Fixed subscribed client-tool continuations so client tools remain available across multiple continuation runs. ([#17593](https://github.com/mastra-ai/mastra/pull/17593))
+
+- Updated dependencies [[`e9be4e7`](https://github.com/mastra-ai/mastra/commit/e9be4e747ec3d8b65548bff92f9377db06105376), [`0c72f03`](https://github.com/mastra-ai/mastra/commit/0c72f032abb13254df5a7856d64be2f207b8006d), [`3b45ea9`](https://github.com/mastra-ai/mastra/commit/3b45ea95015557a6cb9d70dc5252af54ab1b78ac)]:
+  - @mastra/core@1.42.0-alpha.0
+
 ## 1.23.2
 
 ### Patch Changes

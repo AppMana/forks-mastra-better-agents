@@ -1,5 +1,20 @@
 # @mastra/playground-ui
 
+## 32.1.0-alpha.0
+
+### Minor Changes
+
+- Added native switch thumb icons so checked and unchecked states can show their own icon without custom overlay code. ([#17569](https://github.com/mastra-ai/mastra/pull/17569))
+
+### Patch Changes
+
+- Fixed input focus borders so hovering no longer overrides the focused state. ([#17570](https://github.com/mastra-ai/mastra/pull/17570))
+
+- Updated dependencies [[`e9be4e7`](https://github.com/mastra-ai/mastra/commit/e9be4e747ec3d8b65548bff92f9377db06105376), [`95482bf`](https://github.com/mastra-ai/mastra/commit/95482bf8a5c2b38022d4e2fee8ee07488c5f6262), [`0c72f03`](https://github.com/mastra-ai/mastra/commit/0c72f032abb13254df5a7856d64be2f207b8006d), [`3b45ea9`](https://github.com/mastra-ai/mastra/commit/3b45ea95015557a6cb9d70dc5252af54ab1b78ac), [`b3e9781`](https://github.com/mastra-ai/mastra/commit/b3e9781a93a18e8e492849040016ddf239c00d9c)]:
+  - @mastra/core@1.42.0-alpha.0
+  - @mastra/client-js@1.23.3-alpha.0
+  - @mastra/react@0.5.3-alpha.0
+
 ## 32.0.2
 
 ### Patch Changes

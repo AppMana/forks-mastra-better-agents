@@ -1,5 +1,90 @@
 # @mastra/core
 
+## 1.42.0-alpha.0
+
+### Minor Changes
+
+- Added SignalProvider abstraction for building notification signal providers. Enables declarative signal wiring in Agent config with built-in subscription tracking, polling lifecycle, and webhook support. Includes WebhookSignalProvider as a proof-of-concept. ([#17577](https://github.com/mastra-ai/mastra/pull/17577))
+
+  **Writing a signal provider:**
+
+  ```ts
+  import { SignalProvider } from '@mastra/core/signals';
+  import type { SignalSubscription } from '@mastra/core/signals';
+
+  class SlackSignalProvider extends SignalProvider<'slack-signals'> {
+    readonly id = 'slack-signals' as const;
+    readonly pollInterval = 30_000; // poll every 30s
+
+    async poll(subscriptions: SignalSubscription[]) {
+      for (const sub of subscriptions) {
+        const messages = await fetchNewMessages(sub.externalResourceId);
+        if (messages.length > 0) {
+          await this.notify(
+            { source: 'slack', kind: 'new-message', summary: `${messages.length} new messages` },
+            { threadId: sub.threadId, resourceId: sub.resourceId },
+          );
+        }
+      }
+    }
+  }
+  ```
+
+  **Declarative wiring:**
+
+  ```ts
+  import { Agent } from '@mastra/core/agent';
+
+  const agent = new Agent({
+    signals: [new SlackSignalProvider()],
+    // ... other config
+  });
+  ```
+
+- Add batching primitives to the PubSub abstraction. ([#16482](https://github.com/mastra-ai/mastra/pull/16482))
+
+  **New options**
+  - `SubscribeOptions.batch` (`SubscribeBatchOptions`): opt in to coalesced delivery on a per-subscriber basis. Fields: `maxSize`, `maxWaitMs`, `minIntervalMs`, `isImmediate`, `coalesce`, `maxBufferSize`, `overflow`.
+  - `EventEmitterPubSub` constructor accepts optional `EventEmitterPubSubOptions` with a `logger` for batched-delivery error diagnostics.
+
+  **Example**
+
+  ```ts
+  import { EventEmitterPubSub } from '@mastra/core/events';
+
+  const pubsub = new EventEmitterPubSub();
+
+  await pubsub.subscribe(
+    'agent-events',
+    event => {
+      // delivered in coalesced batches; the cb is still invoked once per event
+    },
+    {
+      batch: {
+        maxSize: 10, // flush once 10 events have queued
+        maxWaitMs: 500, // ...or after 500ms, whichever comes first
+      },
+    },
+  );
+  ```
+
+  **New exports**
+  - `SubscribeBatchOptions` type.
+  - `PubSub.supportsNativeBatching` — advertises whether an adapter honors `options.batch` internally.
+
+  **Behavior**
+  - `EventEmitterPubSub.supportsNativeBatching === true`. Batched subscribers receive coalesced delivery driven by an in-memory buffer governed by `maxSize` / `maxWaitMs` / `minIntervalMs` / `isImmediate` / `coalesce` / `overflow` / `maxBufferSize`.
+  - `EventEmitterPubSub.flush()` drains every batched subscriber buffer and waits for any pending nack redeliveries before resolving. Non-callback rejections surface through the configured `logger` instead of being swallowed.
+  - `CachingPubSub` is transparent to batching: it forwards `options` (including `batch`) to its inner PubSub and forwards `supportsNativeBatching` from the inner. Whether batching is honored depends entirely on the wrapped transport.
+
+  **Contract notes**
+  - `SubscribeBatchOptions.coalesce` must return a subset of its input array by reference identity. Returning freshly-constructed `Event` objects (even with matching `id`) is treated as a contract violation: the batching layer can't route `ack`/`nack` to original transport handles for manufactured events, so the entire batch is discarded and every original event is acked as dropped. If you need merged payloads, build them in the subscriber callback after delivery.
+  - `flush()` is best-effort: a successful resolution does not guarantee every subscriber callback succeeded. Per-event errors surface via the configured logger.
+
+### Patch Changes
+
+- Fixed message part timestamps affecting transcript ordering by ensuring only message-level timestamps advance the ordering watermark. ([#17598](https://github.com/mastra-ai/mastra/pull/17598))
+
 ## 1.41.0
 
 ### Minor Changes

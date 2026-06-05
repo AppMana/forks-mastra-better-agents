@@ -1,5 +1,14 @@
 # @mastra/agentcore
 
+## 0.2.1-alpha.0
+
+### Patch Changes
+
+- dependencies updates: ([#17521](https://github.com/mastra-ai/mastra/pull/17521))
+  - Updated dependency [`@aws-sdk/client-bedrock-agentcore@^3.1057.0` ↗︎](https://www.npmjs.com/package/@aws-sdk/client-bedrock-agentcore/v/3.1057.0) (from `^3.1045.0`, in `dependencies`)
+- Updated dependencies [[`e9be4e7`](https://github.com/mastra-ai/mastra/commit/e9be4e747ec3d8b65548bff92f9377db06105376), [`0c72f03`](https://github.com/mastra-ai/mastra/commit/0c72f032abb13254df5a7856d64be2f207b8006d), [`3b45ea9`](https://github.com/mastra-ai/mastra/commit/3b45ea95015557a6cb9d70dc5252af54ab1b78ac)]:
+  - @mastra/core@1.42.0-alpha.0
+
 ## 0.2.0
 
 ### Minor Changes

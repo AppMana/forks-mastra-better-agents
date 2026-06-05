@@ -150,7 +150,35 @@
     "@mastra/google-drive": "0.1.0",
     "@mastra/modal": "0.2.1",
     "@mastra/s3": "0.5.1",
-    "@mastra/vercel": "0.2.0"
+    "@mastra/vercel": "0.2.0",
+    "@mastra/github-signals": "0.1.0"
   },
-  "changesets": []
+  "changesets": [
+    "@mastra_agentcore-17521-dependencies",
+    "@mastra_arize-17519-dependencies",
+    "@mastra_arthur-17519-dependencies",
+    "@mastra_blaxel-17384-dependencies",
+    "@mastra_dsql-17521-dependencies",
+    "@mastra_dynamodb-17521-dependencies",
+    "@mastra_laminar-17519-dependencies",
+    "@mastra_otel-exporter-17519-dependencies",
+    "@mastra_s3-17521-dependencies",
+    "@mastra_s3vectors-17521-dependencies",
+    "@mastra_spanner-17518-dependencies",
+    "@mastra_temporal-17520-dependencies",
+    "@mastra_voice-aws-nova-sonic-17521-dependencies",
+    "@mastra_voice-google-17518-dependencies",
+    "@mastra_voice-google-gemini-live-17518-dependencies",
+    "fix-tools-merge-mcp",
+    "gentle-pandas-mix",
+    "good-hands-find",
+    "green-birds-knock",
+    "old-news-press",
+    "petite-bees-dress",
+    "plain-wings-flash",
+    "pubsub-batching-primitives",
+    "puny-clocks-cry",
+    "tiny-pianos-wave",
+    "upset-parents-start"
+  ]
 }
