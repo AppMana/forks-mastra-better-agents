@@ -10,6 +10,7 @@ import { LLMProviders, LLMModels, useLLMProviders, cleanProviderId, findProvider
 export interface AgentMetadataModelSwitcherProps {
   defaultProvider: string;
   defaultModel: string;
+  allowedProviderIds?: string[];
   updateModel: (newModel: UpdateModelParams) => Promise<{ message: string }>;
   resetModel?: () => Promise<{ message: string }>;
   closeEditor?: () => void;
@@ -20,6 +21,7 @@ export interface AgentMetadataModelSwitcherProps {
 export const AgentMetadataModelSwitcher = ({
   defaultProvider,
   defaultModel,
+  allowedProviderIds,
   updateModel,
   resetModel,
 }: AgentMetadataModelSwitcherProps) => {
@@ -197,6 +199,7 @@ export const AgentMetadataModelSwitcher = ({
           <LLMProviders
             value={currentModelProvider}
             onValueChange={handleProviderSelect}
+            allowedProviderIds={allowedProviderIds}
             open={providerOpen}
             onOpenChange={setProviderOpen}
           />

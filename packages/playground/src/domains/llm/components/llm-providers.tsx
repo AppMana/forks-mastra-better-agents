@@ -12,6 +12,7 @@ import { useBuilderFilteredProviders, useBuilderModelPolicy } from '@/domains/ag
 export interface LLMProvidersProps {
   value: string;
   onValueChange: (value: string) => void;
+  allowedProviderIds?: string[];
   variant?: ComboboxProps['variant'];
   size?: ComboboxProps['size'];
   className?: string;
@@ -24,6 +25,7 @@ export interface LLMProvidersProps {
 export const LLMProviders = ({
   value,
   onValueChange,
+  allowedProviderIds,
   variant = 'default',
   size = 'default',
   className,
@@ -34,11 +36,22 @@ export const LLMProviders = ({
 }: LLMProvidersProps) => {
   const { data: dataProviders, isLoading: providersLoading } = useLLMProviders();
   const allProviders = dataProviders?.providers || [];
+  const allowedProviderIdSet = useMemo(
+    () => (allowedProviderIds ? new Set(allowedProviderIds.map(cleanProviderId)) : null),
+    [allowedProviderIds],
+  );
 
   // Apply admin model policy first (drops disallowed providers entirely),
   // then sort: connected -> popular -> alphabetical
   const policy = useBuilderModelPolicy();
-  const providers = useBuilderFilteredProviders(allProviders, policy);
+  const policyProviders = useBuilderFilteredProviders(allProviders, policy);
+  const providers = useMemo(
+    () =>
+      allowedProviderIdSet
+        ? policyProviders.filter(provider => allowedProviderIdSet.has(cleanProviderId(provider.id)))
+        : policyProviders,
+    [allowedProviderIdSet, policyProviders],
+  );
   const sortedProviders = useFilteredProviders(providers, '', false);
 
   const matchedProvider = findProviderById(providers, value);

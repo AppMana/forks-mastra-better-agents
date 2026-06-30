@@ -22,6 +22,7 @@ export const AgentMetadataModelList = ({
   const [modelConfigs, setModelConfigs] = useState(() => modelList);
   const hasMultipleModels = modelConfigs.length > 1;
   const enabledCount = modelConfigs.filter(m => m.enabled !== false).length;
+  const allowedProviderIds = modelConfigs.map(modelConfig => modelConfig.model.provider);
 
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination) {
@@ -68,6 +69,7 @@ export const AgentMetadataModelList = ({
                     <AgentMetadataModelListItem
                       modelConfig={modelConfig}
                       updateModelInModelList={updateModel}
+                      allowedProviderIds={allowedProviderIds}
                       showDragHandle={hasMultipleModels}
                       dragHandleProps={provided.dragHandleProps}
                       isLastEnabled={modelConfig.enabled !== false && enabledCount === 1}
@@ -87,6 +89,7 @@ export const AgentMetadataModelList = ({
 interface AgentMetadataModelListItemProps {
   modelConfig: AgentMetadataModelListType[number];
   updateModelInModelList: (params: UpdateModelInModelListParams) => Promise<{ message: string }>;
+  allowedProviderIds: string[];
   showDragHandle: boolean;
   dragHandleProps?: any;
   isLastEnabled: boolean;
@@ -95,6 +98,7 @@ interface AgentMetadataModelListItemProps {
 const AgentMetadataModelListItem = ({
   modelConfig,
   updateModelInModelList,
+  allowedProviderIds,
   showDragHandle,
   dragHandleProps,
   isLastEnabled,
@@ -115,6 +119,7 @@ const AgentMetadataModelListItem = ({
           <AgentMetadataModelSwitcher
             defaultProvider={modelConfig.model.provider}
             defaultModel={modelConfig.model.modelId}
+            allowedProviderIds={allowedProviderIds}
             updateModel={params => updateModelInModelList({ modelConfigId: modelConfig.id, model: params })}
             autoSave={true}
           />
