@@ -1,2 +1,0 @@
-export declare function parseHeaders(values: string[]): Record<string, string>;
-//# sourceMappingURL=headers.d.ts.map

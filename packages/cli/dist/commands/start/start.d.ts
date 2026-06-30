@@ -1,8 +1,0 @@
-interface StartOptions {
-  dir?: string;
-  env?: string;
-  customArgs?: string[];
-}
-export declare function start(options?: StartOptions): Promise<void>;
-export {};
-//# sourceMappingURL=start.d.ts.map

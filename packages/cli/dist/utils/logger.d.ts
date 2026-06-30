@@ -1,4 +1,0 @@
-import { PinoLogger } from '@mastra/loggers';
-export declare const logger: PinoLogger<never>;
-export declare function createLogger(debug?: boolean): PinoLogger<never>;
-//# sourceMappingURL=logger.d.ts.map

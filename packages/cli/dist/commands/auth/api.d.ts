@@ -1,8 +1,0 @@
-export interface Org {
-  id: string;
-  name: string;
-  role: string | null;
-  isCurrent: boolean;
-}
-export declare function fetchOrgs(token: string): Promise<Org[]>;
-//# sourceMappingURL=api.d.ts.map

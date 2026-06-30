@@ -1,7 +1,0 @@
-export declare function serverSuggestionsAction(
-  deployId: string | undefined,
-  opts: {
-    org?: string;
-  },
-): Promise<void>;
-//# sourceMappingURL=deploy-suggestions.d.ts.map

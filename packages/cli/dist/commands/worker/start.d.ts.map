@@ -1,1 +1,0 @@
-{"version":3,"file":"start.d.ts","sourceRoot":"","sources":["../../../src/commands/worker/start.ts"],"names":[],"mappings":"AAOA,UAAU,kBAAkB;IAC1B,IAAI,CAAC,EAAE,MAAM,CAAC;IACd,GAAG,CAAC,EAAE,MAAM,CAAC;IACb,GAAG,CAAC,EAAE,MAAM,CAAC;CACd;AAED,wBAAsB,WAAW,CAAC,OAAO,GAAE,kBAAuB,iBAsDjE"}

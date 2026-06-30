@@ -1,3 +1,0 @@
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun';
-export declare function getPackageManagerAddCommand(pm: PackageManager): string;
-//# sourceMappingURL=package-manager.d.ts.map

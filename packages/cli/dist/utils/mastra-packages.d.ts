@@ -1,6 +1,0 @@
-export interface MastraPackageInfo {
-  name: string;
-  version: string;
-}
-export declare function getMastraPackages(rootDir: string): Promise<MastraPackageInfo[]>;
-//# sourceMappingURL=mastra-packages.d.ts.map

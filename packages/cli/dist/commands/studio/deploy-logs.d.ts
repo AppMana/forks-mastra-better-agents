@@ -1,8 +1,0 @@
-export declare function logsAction(
-  deployId: string,
-  opts: {
-    follow?: boolean;
-    tail?: string;
-  },
-): Promise<void>;
-//# sourceMappingURL=deploy-logs.d.ts.map

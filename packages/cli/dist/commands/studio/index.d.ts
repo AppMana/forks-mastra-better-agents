@@ -1,2 +1,0 @@
-export { studio } from './studio.js';
-//# sourceMappingURL=index.d.ts.map

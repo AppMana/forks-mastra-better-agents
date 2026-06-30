@@ -1,2 +1,0 @@
-export declare function deploysAction(): Promise<void>;
-//# sourceMappingURL=deploy-list.d.ts.map

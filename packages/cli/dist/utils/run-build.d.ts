@@ -1,7 +1,0 @@
-export declare function runBuild(
-  projectDir: string,
-  opts?: {
-    debug?: boolean;
-  },
-): Promise<void>;
-//# sourceMappingURL=run-build.d.ts.map

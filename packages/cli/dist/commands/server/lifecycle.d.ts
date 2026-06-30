@@ -1,3 +1,0 @@
-export declare function serverPauseAction(opts: { config?: string; project?: string; org?: string }): Promise<void>;
-export declare function serverRestartAction(opts: { config?: string; project?: string; org?: string }): Promise<void>;
-//# sourceMappingURL=lifecycle.d.ts.map

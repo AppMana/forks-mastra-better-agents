@@ -1,2 +1,0 @@
-export declare function whoamiAction(): Promise<void>;
-//# sourceMappingURL=whoami.d.ts.map

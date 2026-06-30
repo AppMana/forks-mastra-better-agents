@@ -1,8 +1,0 @@
-export declare const migrate: (args: {
-  dir?: string;
-  root?: string;
-  env?: string;
-  debug?: boolean;
-  yes?: boolean;
-}) => Promise<void>;
-//# sourceMappingURL=migrate.d.ts.map

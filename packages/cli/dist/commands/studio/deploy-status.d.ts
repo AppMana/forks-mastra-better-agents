@@ -1,7 +1,0 @@
-export declare function statusAction(
-  deployId: string,
-  opts: {
-    watch?: boolean;
-  },
-): Promise<void>;
-//# sourceMappingURL=deploy-status.d.ts.map

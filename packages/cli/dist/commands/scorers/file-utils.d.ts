@@ -1,9 +1,0 @@
-export declare function writeScorer(
-  filename: string,
-  content: string,
-  customPath?: string,
-): {
-  ok: true;
-  message: string;
-};
-//# sourceMappingURL=file-utils.d.ts.map

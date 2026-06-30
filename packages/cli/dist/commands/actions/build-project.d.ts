@@ -1,8 +1,0 @@
-export declare const buildProject: (args: {
-  dir?: string;
-  root?: string;
-  tools?: string;
-  studio?: boolean;
-  debug: boolean;
-}) => Promise<void>;
-//# sourceMappingURL=build-project.d.ts.map

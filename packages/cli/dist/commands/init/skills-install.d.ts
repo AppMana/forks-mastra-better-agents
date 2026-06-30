@@ -1,6 +1,0 @@
-export declare function installMastraSkills({ directory, agents }: { directory: string; agents: string[] }): Promise<{
-  success: boolean;
-  error?: string;
-  agents: string[];
-}>;
-//# sourceMappingURL=skills-install.d.ts.map
