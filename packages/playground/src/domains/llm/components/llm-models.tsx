@@ -43,11 +43,18 @@ export const LLMModels = ({
 
   // Create model options
   const modelOptions: ComboboxOption[] = useMemo(() => {
-    return filteredModels.map(m => ({
+    const options = filteredModels.map(m => ({
       label: m.model,
       value: m.model,
     }));
-  }, [filteredModels]);
+    if (value && !options.some(option => option.value === value)) {
+      options.unshift({
+        label: value,
+        value,
+      });
+    }
+    return options;
+  }, [filteredModels, value]);
 
   if (providersLoading) {
     return <Skeleton className="w-full h-8" />;

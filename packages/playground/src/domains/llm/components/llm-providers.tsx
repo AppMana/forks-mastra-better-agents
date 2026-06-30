@@ -41,9 +41,12 @@ export const LLMProviders = ({
   const providers = useBuilderFilteredProviders(allProviders, policy);
   const sortedProviders = useFilteredProviders(providers, '', false);
 
+  const matchedProvider = findProviderById(providers, value);
+  const currentModelProvider = matchedProvider?.id || cleanProviderId(value);
+
   // Create provider options with icons
   const providerOptions: ComboboxOption[] = useMemo(() => {
-    return sortedProviders.map(provider => ({
+    const options = sortedProviders.map(provider => ({
       label: provider.name,
       value: provider.id,
       start: (
@@ -71,7 +74,16 @@ export const LLMProviders = ({
         />
       ) : null,
     }));
-  }, [sortedProviders]);
+    if (currentModelProvider && !options.some(option => option.value === currentModelProvider)) {
+      options.unshift({
+        label: currentModelProvider,
+        value: currentModelProvider,
+        start: <ProviderLogo providerId={currentModelProvider} size={16} />,
+        end: null,
+      });
+    }
+    return options;
+  }, [currentModelProvider, sortedProviders]);
 
   const handleValueChange = (providerId: string) => {
     const cleanedId = cleanProviderId(providerId);
@@ -81,11 +93,6 @@ export const LLMProviders = ({
   if (providersLoading) {
     return <Skeleton className="w-full h-8" />;
   }
-
-  // Find the matching provider, handling gateway prefix fallback
-  // (e.g., value='custom' should match provider with id='acme/custom')
-  const matchedProvider = findProviderById(providers, value);
-  const currentModelProvider = matchedProvider?.id || cleanProviderId(value);
 
   return (
     <Combobox

@@ -2,6 +2,8 @@ import {
   AlertDialog,
   Button,
   CopyButton,
+  DropdownMenu,
+  Input,
   Tooltip,
   TooltipTrigger,
   TooltipContent,
@@ -28,6 +30,11 @@ import {
   Cloud,
   Database,
   HardDrive,
+  MoreVertical,
+  Scissors,
+  ClipboardCopy,
+  ClipboardPaste,
+  CopyPlus,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -50,10 +57,16 @@ export interface FileBrowserProps {
   onUpload?: () => void;
   onCreateDirectory?: (path: string) => void | Promise<void>;
   onDelete?: (path: string) => void | Promise<void>;
+  onDuplicate?: (path: string, entry: FileEntry) => void | Promise<void>;
+  onCut?: (path: string, entry: FileEntry) => void;
+  onCopy?: (path: string, entry: FileEntry) => void;
+  onPaste?: (path: string) => void | Promise<void>;
+  canPaste?: boolean;
   /** Shows loading state on create directory button */
   isCreatingDirectory?: boolean;
   /** Shows loading state on delete confirmation */
   isDeleting?: boolean;
+  isFileOperationPending?: boolean;
 }
 
 // =============================================================================
@@ -244,10 +257,18 @@ export function FileBrowser({
   onUpload,
   onCreateDirectory,
   onDelete,
+  onDuplicate,
+  onCut,
+  onCopy,
+  onPaste,
+  canPaste,
   isCreatingDirectory,
   isDeleting,
+  isFileOperationPending,
 }: FileBrowserProps) {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [showCreateDirectory, setShowCreateDirectory] = useState(false);
+  const [directoryName, setDirectoryName] = useState('');
 
   // Sort entries: directories first, then alphabetically
   const sortedEntries = [...entries].sort((a, b) => {
@@ -272,8 +293,19 @@ export function FileBrowser({
     setDeleteTarget(fullPath);
   };
 
+  const getEntryPath = (entry: FileEntry) => (isRoot ? entry.name : `${currentPath}/${entry.name}`);
+
+  const handleCreateDirectory = async () => {
+    const trimmedName = directoryName.trim().replace(/^\/+|\/+$/g, '');
+    if (!trimmedName || !onCreateDirectory) return;
+    const fullPath = isRoot ? trimmedName : `${currentPath}/${trimmedName}`;
+    await onCreateDirectory(fullPath);
+    setDirectoryName('');
+    setShowCreateDirectory(false);
+  };
+
   return (
-    <div className="rounded-lg border border-border1 overflow-hidden">
+    <div className="rounded-lg border border-border1 overflow-hidden w-full min-w-0">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface3 border-b border-border1">
         <Breadcrumb path={currentPath} onNavigate={onNavigate} />
@@ -289,15 +321,24 @@ export function FileBrowser({
               size="md"
               disabled={isCreatingDirectory}
               aria-label="Create directory"
-              onClick={() => {
-                const name = prompt('Directory name:');
-                if (name) {
-                  const fullPath = isRoot ? name : `${currentPath}/${name}`;
-                  void onCreateDirectory(fullPath);
-                }
-              }}
+              onClick={() => setShowCreateDirectory(true)}
             >
               {isCreatingDirectory ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderPlus className="h-4 w-4" />}
+            </Button>
+          )}
+          {onPaste && canPaste && (
+            <Button
+              variant="ghost"
+              size="md"
+              disabled={isFileOperationPending}
+              aria-label="Paste into current directory"
+              onClick={() => void onPaste(currentPath)}
+            >
+              {isFileOperationPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ClipboardPaste className="h-4 w-4" />
+              )}
             </Button>
           )}
           {onUpload && (
@@ -347,6 +388,8 @@ export function FileBrowser({
               {sortedEntries.map(entry => {
                 const mountLabel = entry.mount?.displayName || entry.mount?.provider;
                 const isError = entry.mount?.status === 'error';
+                const fullPath = getEntryPath(entry);
+                const fileOperationsDisabled = entry.type !== 'file' || !!entry.mount || isFileOperationPending;
 
                 return (
                   <li key={entry.name} className="group">
@@ -396,14 +439,55 @@ export function FileBrowser({
                           <span className="text-xs text-neutral3 tabular-nums">{formatBytes(entry.size)}</span>
                         )}
                       </button>
-                      {onDelete && !entry.mount && (
-                        <button
-                          onClick={() => handleDelete(entry)}
-                          aria-label={`Delete ${entry.name}`}
-                          className="p-2 opacity-0 group-hover:opacity-100 hover:text-red-400 text-neutral3 transition-all"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                      {(onDelete || onDuplicate || onCut || onCopy) && !entry.mount && (
+                        <DropdownMenu modal={false}>
+                          <DropdownMenu.Trigger asChild>
+                            <button
+                              aria-label={`Actions for ${entry.name}`}
+                              className="p-2 mr-1 opacity-0 group-hover:opacity-100 hover:text-neutral6 text-neutral3 transition-all"
+                            >
+                              <MoreVertical className="h-3.5 w-3.5" />
+                            </button>
+                          </DropdownMenu.Trigger>
+                          <DropdownMenu.Content align="end">
+                            {onDuplicate && (
+                              <DropdownMenu.Item
+                                disabled={fileOperationsDisabled}
+                                onSelect={() => void onDuplicate(fullPath, entry)}
+                              >
+                                <CopyPlus className="h-3.5 w-3.5 mr-2" />
+                                Duplicate
+                              </DropdownMenu.Item>
+                            )}
+                            {onCut && (
+                              <DropdownMenu.Item
+                                disabled={fileOperationsDisabled}
+                                onSelect={() => onCut(fullPath, entry)}
+                              >
+                                <Scissors className="h-3.5 w-3.5 mr-2" />
+                                Cut
+                              </DropdownMenu.Item>
+                            )}
+                            {onCopy && (
+                              <DropdownMenu.Item
+                                disabled={fileOperationsDisabled}
+                                onSelect={() => onCopy(fullPath, entry)}
+                              >
+                                <ClipboardCopy className="h-3.5 w-3.5 mr-2" />
+                                Copy
+                              </DropdownMenu.Item>
+                            )}
+                            {onDelete && (
+                              <>
+                                {(onDuplicate || onCut || onCopy) && <DropdownMenu.Separator />}
+                                <DropdownMenu.Item onSelect={() => handleDelete(entry)}>
+                                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                  Delete
+                                </DropdownMenu.Item>
+                              </>
+                            )}
+                          </DropdownMenu.Content>
+                        </DropdownMenu>
                       )}
                     </div>
                   </li>
@@ -413,6 +497,50 @@ export function FileBrowser({
           </TooltipProvider>
         )}
       </div>
+
+      {/* Create Directory */}
+      <AlertDialog
+        open={showCreateDirectory}
+        onOpenChange={open => {
+          if (!isCreatingDirectory) {
+            setShowCreateDirectory(open);
+            if (!open) setDirectoryName('');
+          }
+        }}
+      >
+        <AlertDialog.Content>
+          <AlertDialog.Header>
+            <AlertDialog.Title>New Folder</AlertDialog.Title>
+            <AlertDialog.Description>
+              Create a folder in "{isRoot ? 'workspace root' : currentPath}".
+            </AlertDialog.Description>
+          </AlertDialog.Header>
+          <AlertDialog.Body>
+            <Input
+              autoFocus
+              value={directoryName}
+              onChange={event => setDirectoryName(event.currentTarget.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void handleCreateDirectory();
+                }
+              }}
+              placeholder="Folder name"
+            />
+          </AlertDialog.Body>
+          <AlertDialog.Footer>
+            <AlertDialog.Cancel disabled={isCreatingDirectory}>Cancel</AlertDialog.Cancel>
+            <Button
+              disabled={isCreatingDirectory || !directoryName.trim()}
+              onClick={() => void handleCreateDirectory()}
+            >
+              {isCreatingDirectory ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Create
+            </Button>
+          </AlertDialog.Footer>
+        </AlertDialog.Content>
+      </AlertDialog>
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={open => !isDeleting && !open && setDeleteTarget(null)}>

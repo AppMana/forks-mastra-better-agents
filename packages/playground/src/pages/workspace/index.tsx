@@ -33,9 +33,10 @@ import {
   useCreateWorkspaceDirectory,
   useWorkspaceFile,
   useWriteWorkspaceFileFromFile,
+  useWorkspaceFileOperation,
 } from '@/domains/workspace/hooks/use-workspace';
 import { useWorkspaceSkills, useSearchWorkspaceSkills } from '@/domains/workspace/hooks/use-workspace-skills';
-import type { WorkspaceItem } from '@/domains/workspace/types';
+import type { WorkspaceItem, FileEntry } from '@/domains/workspace/types';
 import { buildWorkspaceUploadPath } from '@/domains/workspace/workspace-upload';
 
 type TabType = 'files' | 'skills';
@@ -50,6 +51,11 @@ export default function Workspace() {
   const [removingSkillName, setRemovingSkillName] = useState<string | null>(null);
   const [updatingSkillName, setUpdatingSkillName] = useState<string | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [clipboardItem, setClipboardItem] = useState<{
+    operation: 'copy' | 'cut';
+    path: string;
+    entry: FileEntry;
+  } | null>(null);
   // Track if we installed a skill that wasn't discovered (client-side only, resets on refresh)
   const [hasUndiscoveredInstall, setHasUndiscoveredInstall] = useState(false);
 
@@ -137,6 +143,7 @@ export default function Workspace() {
   const deleteFile = useDeleteWorkspaceFile();
   const createDirectory = useCreateWorkspaceDirectory();
   const writeFileFromFile = useWriteWorkspaceFileFromFile();
+  const fileOperation = useWorkspaceFileOperation();
 
   // Selected file content - pass workspaceId
   const { data: fileContent, isLoading: isLoadingFileContent } = useWorkspaceFile(selectedFile ?? '', {
@@ -192,6 +199,59 @@ export default function Workspace() {
       }
     },
     [currentPath, effectiveWorkspaceId, refetchFiles, writeFileFromFile],
+  );
+
+  const buildPath = useCallback((directory: string, name: string) => {
+    return directory === '.' || directory === '' ? name : `${directory}/${name}`;
+  }, []);
+
+  const buildDuplicateName = useCallback((name: string) => {
+    const dotIndex = name.lastIndexOf('.');
+    if (dotIndex <= 0) return `${name} copy`;
+    return `${name.slice(0, dotIndex)} copy${name.slice(dotIndex)}`;
+  }, []);
+
+  const handleDuplicate = useCallback(
+    async (sourcePath: string, entry: FileEntry) => {
+      if (!effectiveWorkspaceId || entry.type !== 'file') return;
+      const duplicatePath = buildPath(currentPath, buildDuplicateName(entry.name));
+      try {
+        await fileOperation.mutateAsync({
+          workspaceId: effectiveWorkspaceId,
+          operation: 'duplicate',
+          sourcePath,
+          destinationPath: duplicatePath,
+        });
+        toast.success(`Duplicated ${entry.name}`);
+        void refetchFiles();
+      } catch (error) {
+        toast.error(`Failed to duplicate file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    },
+    [buildDuplicateName, buildPath, currentPath, effectiveWorkspaceId, fileOperation, refetchFiles],
+  );
+
+  const handlePaste = useCallback(
+    async (destinationDirectory: string) => {
+      if (!effectiveWorkspaceId || !clipboardItem || clipboardItem.entry.type !== 'file') return;
+      const destinationPath = buildPath(destinationDirectory, clipboardItem.entry.name);
+      try {
+        await fileOperation.mutateAsync({
+          workspaceId: effectiveWorkspaceId,
+          operation: clipboardItem.operation,
+          sourcePath: clipboardItem.path,
+          destinationPath,
+        });
+        toast.success(`${clipboardItem.operation === 'cut' ? 'Moved' : 'Copied'} ${clipboardItem.entry.name}`);
+        if (clipboardItem.operation === 'cut') {
+          setClipboardItem(null);
+        }
+        void refetchFiles();
+      } catch (error) {
+        toast.error(`Failed to paste file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    },
+    [buildPath, clipboardItem, effectiveWorkspaceId, fileOperation, refetchFiles],
   );
 
   // Derive writable mounts for CompositeFilesystem
@@ -537,7 +597,7 @@ export default function Workspace() {
 
             {hasFilesystem && (
               <TabContent value="files" className="pb-8">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,40%)] gap-4 w-full">
                   <FileBrowser
                     entries={files}
                     currentPath={currentPath}
@@ -552,12 +612,34 @@ export default function Workspace() {
                         ? undefined
                         : path => createDirectory.mutate({ path, workspaceId: effectiveWorkspaceId })
                     }
+                    onDuplicate={isReadOnly ? undefined : handleDuplicate}
+                    onCut={
+                      isReadOnly
+                        ? undefined
+                        : (path, entry) => {
+                            setClipboardItem({ operation: 'cut', path, entry });
+                            toast.success(`Ready to move ${entry.name}`);
+                          }
+                    }
+                    onCopy={
+                      isReadOnly
+                        ? undefined
+                        : (path, entry) => {
+                            setClipboardItem({ operation: 'copy', path, entry });
+                            toast.success(`Ready to copy ${entry.name}`);
+                          }
+                    }
+                    onPaste={isReadOnly ? undefined : handlePaste}
+                    canPaste={!!clipboardItem}
                     onDelete={
                       isReadOnly
                         ? undefined
                         : path =>
                             deleteFile.mutate({ path, recursive: true, force: true, workspaceId: effectiveWorkspaceId })
                     }
+                    isCreatingDirectory={createDirectory.isPending}
+                    isDeleting={deleteFile.isPending}
+                    isFileOperationPending={fileOperation.isPending}
                   />
                   <input
                     ref={uploadInputRef}

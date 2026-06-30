@@ -225,6 +225,42 @@ export const useCreateWorkspaceDirectory = () => {
   });
 };
 
+export const useWorkspaceFileOperation = () => {
+  const client = useMastraClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: {
+      workspaceId: string;
+      operation: 'copy' | 'cut' | 'duplicate';
+      sourcePath: string;
+      destinationPath: string;
+    }) => {
+      if (!isWorkspaceV1Supported(client)) {
+        throw new Error('Workspace v1 not supported by core or client');
+      }
+      const workspace = (client as any).getWorkspace(params.workspaceId);
+      const source = await workspace.readFile(params.sourcePath, 'base64');
+      await workspace.writeFile(params.destinationPath, source.content, {
+        encoding: 'base64',
+        recursive: true,
+      });
+      if (params.operation === 'cut') {
+        await workspace.delete(params.sourcePath, { force: true });
+      }
+      return { path: params.destinationPath };
+    },
+    onSuccess: (_, variables) => {
+      const sourceParentPath = getParentPath(variables.sourcePath);
+      const destinationParentPath = getParentPath(variables.destinationPath);
+      void queryClient.invalidateQueries({ queryKey: ['workspace', 'files', sourceParentPath] });
+      void queryClient.invalidateQueries({ queryKey: ['workspace', 'files', destinationParentPath] });
+      void queryClient.invalidateQueries({ queryKey: ['workspace', 'file', variables.sourcePath] });
+      void queryClient.invalidateQueries({ queryKey: ['workspace', 'file', variables.destinationPath] });
+    },
+  });
+};
+
 // =============================================================================
 // Search Hooks
 // =============================================================================
