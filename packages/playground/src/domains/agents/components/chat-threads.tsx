@@ -10,7 +10,6 @@ import {
   ThreadListNewItem,
   ThreadListSeparator,
 } from '@/components/thread-list';
-import { usePermissions } from '@/domains/auth/hooks/use-permissions';
 import { useLinkComponent } from '@/lib/framework';
 
 export interface ChatThreadsProps {
@@ -37,9 +36,6 @@ export const ChatThreads = ({
   const { Link, paths } = useLinkComponent();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [renameThread, setRenameThread] = useState<StorageThreadType | null>(null);
-  const { canDelete } = usePermissions();
-
-  const canDeleteThread = canDelete('memory');
 
   if (isLoading) {
     return <ChatThreadSkeleton />;
@@ -79,11 +75,7 @@ export const ChatThreads = ({
                   isActive={isActive}
                   isUnread={unreadThreadIds?.has(thread.id)}
                   actions={
-                    <ThreadActions
-                      canDelete={canDeleteThread}
-                      onRename={() => setRenameThread(thread)}
-                      onDelete={() => setDeleteId(thread.id)}
-                    />
+                    <ThreadActions onRename={() => setRenameThread(thread)} onDelete={() => setDeleteId(thread.id)} />
                   }
                 >
                   <ThreadTitle title={thread.title} id={thread.id} createdAt={thread.createdAt} />
@@ -117,15 +109,7 @@ export const ChatThreads = ({
   );
 };
 
-function ThreadActions({
-  canDelete,
-  onRename,
-  onDelete,
-}: {
-  canDelete: boolean;
-  onRename: () => void;
-  onDelete: () => void;
-}) {
+function ThreadActions({ onRename, onDelete }: { onRename: () => void; onDelete: () => void }) {
   return (
     <DropdownMenu modal={false}>
       <DropdownMenu.Trigger asChild>
@@ -143,18 +127,16 @@ function ThreadActions({
           <Pencil />
           Rename
         </DropdownMenu.Item>
-        {canDelete && (
-          <DropdownMenu.Item
-            variant="destructive"
-            onSelect={event => {
-              event.preventDefault();
-              onDelete();
-            }}
-          >
-            <Trash2 />
-            Delete
-          </DropdownMenu.Item>
-        )}
+        <DropdownMenu.Item
+          variant="destructive"
+          onSelect={event => {
+            event.preventDefault();
+            onDelete();
+          }}
+        >
+          <Trash2 />
+          Delete
+        </DropdownMenu.Item>
       </DropdownMenu.Content>
     </DropdownMenu>
   );
@@ -177,7 +159,7 @@ const DeleteThreadDialog = ({ open, onOpenChange, onDelete }: DeleteThreadDialog
         </AlertDialog.Header>
         <AlertDialog.Footer>
           <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-          <AlertDialog.Action onClick={onDelete}>Continue</AlertDialog.Action>
+          <AlertDialog.Action onClick={onDelete}>Delete</AlertDialog.Action>
         </AlertDialog.Footer>
       </AlertDialog.Content>
     </AlertDialog>
