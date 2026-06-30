@@ -13,6 +13,10 @@ export const agentIdQuerySchema = z.object({
   agentId: z.string(),
 });
 
+export const agentIdWithOptionalResourceQuerySchema = agentIdQuerySchema.extend({
+  resourceId: z.string().optional(),
+});
+
 /**
  * Common query parameter: optional agent ID
  * Used for read operations that can fall back to storage when agentId is not provided

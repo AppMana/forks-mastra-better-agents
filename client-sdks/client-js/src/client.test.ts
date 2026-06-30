@@ -157,6 +157,45 @@ describe('MastraClient', () => {
     client = new MastraClient(clientOptions);
   });
 
+  describe('Memory threads', () => {
+    it('includes resourceId in the create-thread query string when provided', async () => {
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        headers: {
+          get: () => 'application/json',
+        },
+        json: async () => ({
+          id: 'thread-1',
+          resourceId: 'coding',
+          title: '',
+          metadata: {},
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+      });
+
+      await client.createMemoryThread({
+        agentId: 'coding',
+        resourceId: 'coding',
+        threadId: 'thread-1',
+        title: '',
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:4111/api/memory/threads?agentId=coding&resourceId=coding',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            agentId: 'coding',
+            resourceId: 'coding',
+            threadId: 'thread-1',
+            title: '',
+          }),
+        }),
+      );
+    });
+  });
+
   describe('Client Error Handling', () => {
     it('should retry failed requests', async () => {
       // Mock first two calls to fail, third to succeed

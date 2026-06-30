@@ -316,8 +316,13 @@ export class MastraClient extends BaseResource {
    * @returns Promise containing the created memory thread
    */
   public createMemoryThread(params: CreateMemoryThreadParams): Promise<CreateMemoryThreadResponse> {
+    const queryParams = new URLSearchParams({ agentId: params.agentId });
+    if (params.resourceId) {
+      queryParams.set('resourceId', params.resourceId);
+    }
+
     return this.request(
-      `/memory/threads?agentId=${params.agentId}${requestContextQueryString(params.requestContext, '&')}`,
+      `/memory/threads?${queryParams.toString()}${requestContextQueryString(params.requestContext, '&')}`,
       { method: 'POST', body: params },
     );
   }

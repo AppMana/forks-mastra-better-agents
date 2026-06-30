@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   runtimeProps: undefined as any,
   threadRuntimeState: undefined as any,
   sendMessage: vi.fn(),
+  createMemoryThread: vi.fn(),
   markCycleIdActivated: vi.fn(),
   setStreamProgress: vi.fn(),
   chatState: {
@@ -68,6 +69,7 @@ vi.mock('@mastra/react', () => ({
   })),
   useMastraClient: vi.fn(() => ({
     options: {},
+    createMemoryThread: mocks.createMemoryThread,
   })),
 }));
 
@@ -138,6 +140,7 @@ describe('MastraRuntimeProvider', () => {
     mocks.chatState.isAwaitingToolApproval = false;
     mocks.chatState.isRunning = false;
     mocks.sendMessage.mockReset();
+    mocks.createMemoryThread.mockReset();
     mocks.markCycleIdActivated.mockReset();
     mocks.setStreamProgress.mockReset();
     delete (window as any).MASTRA_AGENT_SIGNALS;
@@ -163,6 +166,48 @@ describe('MastraRuntimeProvider', () => {
     );
 
     expect(useChat).toHaveBeenCalledWith(expect.objectContaining({ enableThreadSignals: false }));
+  });
+
+  it('precreates an agent-scoped memory thread before sending the first message', async () => {
+    mocks.createMemoryThread.mockResolvedValue({
+      id: 'thread-1',
+      resourceId: 'coding',
+      title: '',
+      metadata: {},
+      createdAt: new Date('2026-06-30T00:00:00.000Z'),
+      updatedAt: new Date('2026-06-30T00:00:00.000Z'),
+    });
+    mocks.sendMessage.mockResolvedValue(undefined);
+    const refreshThreadList = vi.fn();
+
+    render(
+      <MastraRuntimeProvider
+        agentId="coding"
+        threadId="thread-1"
+        initialMessages={[]}
+        modelVersion="v2"
+        refreshThreadList={refreshThreadList}
+      >
+        <div />
+      </MastraRuntimeProvider>,
+    );
+
+    await act(async () => {
+      await mocks.runtimeProps.onNew({
+        content: [{ type: 'text', text: 'hello' }],
+      });
+    });
+
+    expect(mocks.createMemoryThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'coding',
+        resourceId: 'coding',
+        threadId: 'thread-1',
+        title: '',
+      }),
+    );
+    expect(refreshThreadList).toHaveBeenCalled();
+    expect(mocks.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ threadId: 'thread-1' }));
   });
 
   it('persists a visible error when a vNext stream finishes with pending tool calls', async () => {

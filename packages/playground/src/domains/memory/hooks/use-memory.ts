@@ -42,7 +42,7 @@ export const useThread = ({ threadId, agentId }: { threadId?: string; agentId?: 
 
   return useQuery({
     queryKey: ['memory', 'thread', threadId, agentId, requestContext],
-    queryFn: () => client.getMemoryThread({ threadId: threadId!, agentId }).get({ requestContext }),
+    queryFn: () => client.getMemoryThread({ threadId: threadId!, agentId }).get(requestContext),
     enabled: Boolean(threadId) && threadId !== 'new' && Boolean(agentId),
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
