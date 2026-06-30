@@ -29,7 +29,13 @@ export interface ThreadListNewItemProps {
 
 export const ThreadListNewItem = ({ as, href, to, children }: ThreadListNewItemProps) => {
   return (
-    <Button as={as} href={href} to={to} variant="ghost" className="w-full min-w-0 justify-start rounded-xl">
+    <Button
+      as={as}
+      href={href}
+      to={to}
+      variant="ghost"
+      className="flex w-full min-w-0 max-w-full justify-start overflow-hidden whitespace-nowrap rounded-xl"
+    >
       {children}
     </Button>
   );
@@ -77,12 +83,17 @@ export const ThreadListItem = ({
         href={href}
         to={to}
         variant="ghost"
-        className={cn('w-full min-w-0 justify-start rounded-xl pr-9', isActive && 'bg-surface4 text-neutral6')}
+        className={cn(
+          'flex w-full min-w-0 max-w-full justify-start overflow-hidden whitespace-nowrap rounded-xl pr-9',
+          isActive && 'bg-surface4 text-neutral6',
+        )}
       >
         <span className="mr-2 flex h-2 w-2 shrink-0 items-center justify-center">
           {isUnread && !isActive && <span className="h-2 w-2 rounded-full bg-accent3" aria-label="Unread replies" />}
         </span>
-        <span className="block min-w-0 flex-1 truncate text-left">{children}</span>
+        <span className="block min-w-0 max-w-full flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left">
+          {children}
+        </span>
       </Button>
 
       {actions && (
@@ -97,7 +108,9 @@ export const ThreadListItem = ({
     <li className="group relative">
       {contextActions ? (
         <ContextMenu>
-          <ContextMenu.Trigger className="block">{body}</ContextMenu.Trigger>
+          <ContextMenu.Trigger className="block min-w-0 max-w-full overflow-hidden whitespace-nowrap">
+            {body}
+          </ContextMenu.Trigger>
           <ContextMenu.Content align="start">{contextActions}</ContextMenu.Content>
         </ContextMenu>
       ) : (

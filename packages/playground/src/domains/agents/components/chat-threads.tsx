@@ -262,10 +262,14 @@ function isDefaultThreadName(name: string): boolean {
 
 function ThreadTitle({ title, id, createdAt }: { title?: string; id?: string; createdAt?: Date }) {
   if (!title || isDefaultThreadName(title)) {
-    return <span>{createdAt ? formatDay(createdAt) : `Thread ${id ? id.substring(id.length - 5) : ''}`}</span>;
+    return (
+      <span className="block min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+        {createdAt ? formatDay(createdAt) : `Thread ${id ? id.substring(id.length - 5) : ''}`}
+      </span>
+    );
   }
 
-  return <span className="truncate">{title}</span>;
+  return <span className="block min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{title}</span>;
 }
 
 const formatDay = (date: Date) => {
