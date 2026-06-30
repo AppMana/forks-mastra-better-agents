@@ -597,7 +597,11 @@ export default function Workspace() {
 
             {hasFilesystem && (
               <TabContent value="files" className="pb-8">
-                <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(360px,40%)] gap-4 w-full">
+                <div
+                  className={`grid grid-cols-1 gap-4 w-full ${
+                    selectedFile ? 'xl:grid-cols-[minmax(0,1fr)_minmax(360px,40%)]' : ''
+                  }`}
+                >
                   <FileBrowser
                     entries={files}
                     currentPath={currentPath}

@@ -1,4 +1,4 @@
-import { Button, Txt } from '@mastra/playground-ui';
+import { Button, ContextMenu, Txt } from '@mastra/playground-ui';
 import type { ElementType, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -29,7 +29,7 @@ export interface ThreadListNewItemProps {
 
 export const ThreadListNewItem = ({ as, href, to, children }: ThreadListNewItemProps) => {
   return (
-    <Button as={as} href={href} to={to} variant="ghost" className="w-full justify-start rounded-xl">
+    <Button as={as} href={href} to={to} variant="ghost" className="w-full min-w-0 justify-start rounded-xl">
       {children}
     </Button>
   );
@@ -56,29 +56,52 @@ export interface ThreadListItemProps {
   isActive?: boolean;
   isUnread?: boolean;
   actions?: ReactNode;
+  contextActions?: ReactNode;
   children: ReactNode;
 }
 
-export const ThreadListItem = ({ as, href, to, isActive, isUnread, actions, children }: ThreadListItemProps) => {
-  return (
-    <li className="group relative">
+export const ThreadListItem = ({
+  as,
+  href,
+  to,
+  isActive,
+  isUnread,
+  actions,
+  contextActions,
+  children,
+}: ThreadListItemProps) => {
+  const body = (
+    <>
       <Button
         as={as}
         href={href}
         to={to}
         variant="ghost"
-        className={cn('w-full justify-start rounded-xl pr-10', isActive && 'bg-surface4 text-neutral6')}
+        className={cn('w-full min-w-0 justify-start rounded-xl pr-9', isActive && 'bg-surface4 text-neutral6')}
       >
-        {isUnread && !isActive && (
-          <span className="mr-2 h-2 w-2 shrink-0 rounded-full bg-accent3" aria-label="Unread replies" />
-        )}
-        {children}
+        <span className="mr-2 flex h-2 w-2 shrink-0 items-center justify-center">
+          {isUnread && !isActive && <span className="h-2 w-2 rounded-full bg-accent3" aria-label="Unread replies" />}
+        </span>
+        <span className="block min-w-0 flex-1 truncate text-left">{children}</span>
       </Button>
 
       {actions && (
         <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
           {actions}
         </div>
+      )}
+    </>
+  );
+
+  return (
+    <li className="group relative">
+      {contextActions ? (
+        <ContextMenu>
+          <ContextMenu.Trigger className="block">{body}</ContextMenu.Trigger>
+          <ContextMenu.Content align="start">{contextActions}</ContextMenu.Content>
+        </ContextMenu>
+      ) : (
+        body
       )}
     </li>
   );

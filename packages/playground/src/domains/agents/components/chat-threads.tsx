@@ -1,5 +1,5 @@
 import type { StorageThreadType } from '@mastra/core/memory';
-import { AlertDialog, Button, DropdownMenu, Icon, Input, Skeleton } from '@mastra/playground-ui';
+import { AlertDialog, Button, ContextMenu, DropdownMenu, Icon, Input, Skeleton } from '@mastra/playground-ui';
 import { Ellipsis, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -77,6 +77,12 @@ export const ChatThreads = ({
                   actions={
                     <ThreadActions onRename={() => setRenameThread(thread)} onDelete={() => setDeleteId(thread.id)} />
                   }
+                  contextActions={
+                    <ThreadContextActions
+                      onRename={() => setRenameThread(thread)}
+                      onDelete={() => setDeleteId(thread.id)}
+                    />
+                  }
                 >
                   <ThreadTitle title={thread.title} id={thread.id} createdAt={thread.createdAt} />
                 </ThreadListItem>
@@ -139,6 +145,32 @@ function ThreadActions({ onRename, onDelete }: { onRename: () => void; onDelete:
         </DropdownMenu.Item>
       </DropdownMenu.Content>
     </DropdownMenu>
+  );
+}
+
+function ThreadContextActions({ onRename, onDelete }: { onRename: () => void; onDelete: () => void }) {
+  return (
+    <>
+      <ContextMenu.Item
+        onSelect={event => {
+          event.preventDefault();
+          onRename();
+        }}
+      >
+        <Pencil />
+        Rename
+      </ContextMenu.Item>
+      <ContextMenu.Item
+        variant="destructive"
+        onSelect={event => {
+          event.preventDefault();
+          onDelete();
+        }}
+      >
+        <Trash2 />
+        Delete
+      </ContextMenu.Item>
+    </>
   );
 }
 

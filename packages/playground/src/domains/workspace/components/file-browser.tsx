@@ -1,6 +1,7 @@
 import {
   AlertDialog,
   Button,
+  ContextMenu,
   CopyButton,
   DropdownMenu,
   Input,
@@ -393,103 +394,144 @@ export function FileBrowser({
 
                 return (
                   <li key={entry.name} className="group">
-                    <div className="flex items-center hover:bg-surface4 transition-colors">
-                      <button
-                        onClick={() => handleEntryClick(entry)}
-                        className="flex-1 flex items-center gap-3 px-4 py-2 text-left"
-                      >
-                        {getFileIcon(entry)}
-                        <span className="text-sm text-neutral6 flex-1 truncate">{entry.name}</span>
-                        {/* Mount error indicator */}
-                        {entry.mount && isError && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span tabIndex={0} className="flex items-center">
-                                <AlertCircle className="h-4 w-4 text-red-400" />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs">
-                              <span className="text-red-400">Error:</span>{' '}
-                              {entry.mount.error || 'Failed to connect to this filesystem'}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        {entry.mount &&
-                          mountLabel &&
-                          (entry.mount.description ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
+                    <ContextMenu>
+                      <ContextMenu.Trigger>
+                        <div className="flex items-center hover:bg-surface4 transition-colors">
+                          <button
+                            onClick={() => handleEntryClick(entry)}
+                            className="flex-1 min-w-0 flex items-center gap-3 px-4 py-2 text-left"
+                          >
+                            {getFileIcon(entry)}
+                            <span className="text-sm text-neutral6 flex-1 truncate">{entry.name}</span>
+                            {/* Mount error indicator */}
+                            {entry.mount && isError && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span tabIndex={0} className="flex items-center">
+                                    <AlertCircle className="h-4 w-4 text-red-400" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <span className="text-red-400">Error:</span>{' '}
+                                  {entry.mount.error || 'Failed to connect to this filesystem'}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            {entry.mount &&
+                              mountLabel &&
+                              (entry.mount.description ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      tabIndex={0}
+                                      className={`text-xs px-1.5 py-0.5 rounded ${isError ? 'text-red-400 bg-red-400/10' : 'text-neutral3 bg-surface4'}`}
+                                    >
+                                      {mountLabel}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{entry.mount.description}</TooltipContent>
+                                </Tooltip>
+                              ) : (
                                 <span
-                                  tabIndex={0}
                                   className={`text-xs px-1.5 py-0.5 rounded ${isError ? 'text-red-400 bg-red-400/10' : 'text-neutral3 bg-surface4'}`}
                                 >
                                   {mountLabel}
                                 </span>
-                              </TooltipTrigger>
-                              <TooltipContent>{entry.mount.description}</TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <span
-                              className={`text-xs px-1.5 py-0.5 rounded ${isError ? 'text-red-400 bg-red-400/10' : 'text-neutral3 bg-surface4'}`}
-                            >
-                              {mountLabel}
-                            </span>
-                          ))}
-                        {entry.type === 'file' && entry.size !== undefined && (
-                          <span className="text-xs text-neutral3 tabular-nums">{formatBytes(entry.size)}</span>
-                        )}
-                      </button>
+                              ))}
+                            {entry.type === 'file' && entry.size !== undefined && (
+                              <span className="text-xs text-neutral3 tabular-nums">{formatBytes(entry.size)}</span>
+                            )}
+                          </button>
+                          {(onDelete || onDuplicate || onCut || onCopy) && !entry.mount && (
+                            <DropdownMenu modal={false}>
+                              <DropdownMenu.Trigger asChild>
+                                <button
+                                  aria-label={`Actions for ${entry.name}`}
+                                  className="p-2 mr-1 opacity-0 group-hover:opacity-100 hover:text-neutral6 text-neutral3 transition-all"
+                                >
+                                  <MoreVertical className="h-3.5 w-3.5" />
+                                </button>
+                              </DropdownMenu.Trigger>
+                              <DropdownMenu.Content align="end">
+                                {onDuplicate && (
+                                  <DropdownMenu.Item
+                                    disabled={fileOperationsDisabled}
+                                    onSelect={() => void onDuplicate(fullPath, entry)}
+                                  >
+                                    <CopyPlus className="h-3.5 w-3.5 mr-2" />
+                                    Duplicate
+                                  </DropdownMenu.Item>
+                                )}
+                                {onCut && (
+                                  <DropdownMenu.Item
+                                    disabled={fileOperationsDisabled}
+                                    onSelect={() => onCut(fullPath, entry)}
+                                  >
+                                    <Scissors className="h-3.5 w-3.5 mr-2" />
+                                    Cut
+                                  </DropdownMenu.Item>
+                                )}
+                                {onCopy && (
+                                  <DropdownMenu.Item
+                                    disabled={fileOperationsDisabled}
+                                    onSelect={() => onCopy(fullPath, entry)}
+                                  >
+                                    <ClipboardCopy className="h-3.5 w-3.5 mr-2" />
+                                    Copy
+                                  </DropdownMenu.Item>
+                                )}
+                                {onDelete && (
+                                  <>
+                                    {(onDuplicate || onCut || onCopy) && <DropdownMenu.Separator />}
+                                    <DropdownMenu.Item onSelect={() => handleDelete(entry)}>
+                                      <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                      Delete
+                                    </DropdownMenu.Item>
+                                  </>
+                                )}
+                              </DropdownMenu.Content>
+                            </DropdownMenu>
+                          )}
+                        </div>
+                      </ContextMenu.Trigger>
                       {(onDelete || onDuplicate || onCut || onCopy) && !entry.mount && (
-                        <DropdownMenu modal={false}>
-                          <DropdownMenu.Trigger asChild>
-                            <button
-                              aria-label={`Actions for ${entry.name}`}
-                              className="p-2 mr-1 opacity-0 group-hover:opacity-100 hover:text-neutral6 text-neutral3 transition-all"
+                        <ContextMenu.Content align="start">
+                          {onDuplicate && (
+                            <ContextMenu.Item
+                              disabled={fileOperationsDisabled}
+                              onSelect={() => void onDuplicate(fullPath, entry)}
                             >
-                              <MoreVertical className="h-3.5 w-3.5" />
-                            </button>
-                          </DropdownMenu.Trigger>
-                          <DropdownMenu.Content align="end">
-                            {onDuplicate && (
-                              <DropdownMenu.Item
-                                disabled={fileOperationsDisabled}
-                                onSelect={() => void onDuplicate(fullPath, entry)}
-                              >
-                                <CopyPlus className="h-3.5 w-3.5 mr-2" />
-                                Duplicate
-                              </DropdownMenu.Item>
-                            )}
-                            {onCut && (
-                              <DropdownMenu.Item
-                                disabled={fileOperationsDisabled}
-                                onSelect={() => onCut(fullPath, entry)}
-                              >
-                                <Scissors className="h-3.5 w-3.5 mr-2" />
-                                Cut
-                              </DropdownMenu.Item>
-                            )}
-                            {onCopy && (
-                              <DropdownMenu.Item
-                                disabled={fileOperationsDisabled}
-                                onSelect={() => onCopy(fullPath, entry)}
-                              >
-                                <ClipboardCopy className="h-3.5 w-3.5 mr-2" />
-                                Copy
-                              </DropdownMenu.Item>
-                            )}
-                            {onDelete && (
-                              <>
-                                {(onDuplicate || onCut || onCopy) && <DropdownMenu.Separator />}
-                                <DropdownMenu.Item onSelect={() => handleDelete(entry)}>
-                                  <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                  Delete
-                                </DropdownMenu.Item>
-                              </>
-                            )}
-                          </DropdownMenu.Content>
-                        </DropdownMenu>
+                              <CopyPlus className="h-3.5 w-3.5 mr-2" />
+                              Duplicate
+                            </ContextMenu.Item>
+                          )}
+                          {onCut && (
+                            <ContextMenu.Item disabled={fileOperationsDisabled} onSelect={() => onCut(fullPath, entry)}>
+                              <Scissors className="h-3.5 w-3.5 mr-2" />
+                              Cut
+                            </ContextMenu.Item>
+                          )}
+                          {onCopy && (
+                            <ContextMenu.Item
+                              disabled={fileOperationsDisabled}
+                              onSelect={() => onCopy(fullPath, entry)}
+                            >
+                              <ClipboardCopy className="h-3.5 w-3.5 mr-2" />
+                              Copy
+                            </ContextMenu.Item>
+                          )}
+                          {onDelete && (
+                            <>
+                              {(onDuplicate || onCut || onCopy) && <ContextMenu.Separator />}
+                              <ContextMenu.Item onSelect={() => handleDelete(entry)}>
+                                <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                Delete
+                              </ContextMenu.Item>
+                            </>
+                          )}
+                        </ContextMenu.Content>
                       )}
-                    </div>
+                    </ContextMenu>
                   </li>
                 );
               })}
