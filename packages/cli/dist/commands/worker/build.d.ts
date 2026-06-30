@@ -1,0 +1,14 @@
+export declare function buildWorker({
+  dir,
+  root,
+  tools,
+  outputDir,
+  debug,
+}: {
+  dir?: string;
+  root?: string;
+  tools?: string;
+  outputDir?: string;
+  debug?: boolean;
+}): Promise<void>;
+//# sourceMappingURL=build.d.ts.map

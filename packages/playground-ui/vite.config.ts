@@ -27,7 +27,7 @@ const libConfig: UserConfig = {
       // was removed from `build`), fail the build when diagnostics are emitted so
       // type errors still gate the bundle.
       afterDiagnostic: diagnostics => {
-        if (diagnostics.length > 0 && process.env.MASTRA_GIT_PREPACK !== '1') {
+        if (diagnostics.length > 0) {
           throw new Error(`vite-plugin-dts found ${diagnostics.length} type error(s); see log above.`);
         }
       },

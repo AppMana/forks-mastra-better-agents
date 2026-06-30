@@ -1,0 +1,2 @@
+export declare const startProject: (args: { dir?: string; env?: string; customArgs?: string }) => Promise<void>;
+//# sourceMappingURL=start-project.d.ts.map

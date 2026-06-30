@@ -1,0 +1,30 @@
+export declare function getMastraVersion(projectDir: string): string | null;
+export declare function parseEnvFile(content: string): Record<string, string>;
+/**
+ * Loads MASTRA_PROJECT_ID and MASTRA_ORG_ID from the project's .env files
+ * into process.env so deploys auto-link to the project that `mastra init --observability`
+ * provisioned. Uses dotenv with override: false (the default), so any
+ * existing process.env value (e.g. from CI) always wins.
+ */
+export declare function loadDeployEnvFromDotenv(projectDir: string): void;
+export declare function readEnvVars(
+  projectDir: string,
+  options?: {
+    autoAccept?: boolean;
+    envFile?: string;
+  },
+): Promise<Record<string, string>>;
+export declare function deployAction(
+  dir: string | undefined,
+  opts: {
+    org?: string;
+    project?: string;
+    yes?: boolean;
+    config?: string;
+    skipBuild?: boolean;
+    skipPreflight?: boolean;
+    debug?: boolean;
+    envFile?: string;
+  },
+): Promise<void>;
+//# sourceMappingURL=deploy.d.ts.map

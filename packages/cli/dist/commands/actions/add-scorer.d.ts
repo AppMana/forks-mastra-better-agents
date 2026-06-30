@@ -1,0 +1,7 @@
+export declare const addScorer: (
+  scorerName: string | undefined,
+  args: {
+    dir?: string;
+  },
+) => Promise<void>;
+//# sourceMappingURL=add-scorer.d.ts.map
