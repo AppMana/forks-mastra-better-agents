@@ -1,6 +1,6 @@
-import { AlertDialog, Icon, Skeleton, Spinner } from '@mastra/playground-ui';
+import { AlertDialog, Button, Icon, Skeleton, Spinner } from '@mastra/playground-ui';
 import { formatDate } from 'date-fns';
-import { Plus } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { WorkflowRunStatusBadge } from '../components/workflow-run-status-badge';
 import {
@@ -72,8 +72,21 @@ export const WorkflowRunList = ({ workflowId, runId }: WorkflowRunListProps) => 
                   as={Link}
                   to={paths.workflowRunLink(workflowId, run.runId)}
                   isActive={run.runId === runId}
-                  onDelete={canDeleteRun ? () => setDeleteRunId(run.runId) : undefined}
-                  deleteLabel="delete run"
+                  actions={
+                    canDeleteRun ? (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="delete run"
+                        onClick={event => {
+                          event.preventDefault();
+                          setDeleteRunId(run.runId);
+                        }}
+                      >
+                        <Trash2 />
+                      </Button>
+                    ) : undefined
+                  }
                 >
                   <span className="flex flex-col items-start gap-1 text-left">
                     {run?.snapshot && typeof run.snapshot === 'object' && (

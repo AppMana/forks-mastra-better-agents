@@ -377,7 +377,7 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
                 variant="default"
                 size="icon-md"
                 type="button"
-                tooltip={`Upload to workspace: ${selectedWorkspace.name}`}
+                tooltip="Upload to Workspace"
                 onClick={() => workspaceUploadInputRef.current?.click()}
               >
                 <Upload className="h-5 w-5 text-neutral3 hover:text-neutral6" />

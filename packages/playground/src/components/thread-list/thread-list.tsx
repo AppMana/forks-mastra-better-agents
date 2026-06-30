@@ -1,5 +1,4 @@
 import { Button, Txt } from '@mastra/playground-ui';
-import { X } from 'lucide-react';
 import type { ElementType, ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -55,20 +54,12 @@ export interface ThreadListItemProps {
   href?: string;
   to?: string;
   isActive?: boolean;
-  onDelete?: () => void;
-  deleteLabel?: string;
+  isUnread?: boolean;
+  actions?: ReactNode;
   children: ReactNode;
 }
 
-export const ThreadListItem = ({
-  as,
-  href,
-  to,
-  isActive,
-  onDelete,
-  deleteLabel = 'delete',
-  children,
-}: ThreadListItemProps) => {
+export const ThreadListItem = ({ as, href, to, isActive, isUnread, actions, children }: ThreadListItemProps) => {
   return (
     <li className="group relative">
       <Button
@@ -76,21 +67,18 @@ export const ThreadListItem = ({
         href={href}
         to={to}
         variant="ghost"
-        className={cn('w-full justify-start rounded-xl', isActive && 'bg-surface4 text-neutral6')}
+        className={cn('w-full justify-start rounded-xl pr-10', isActive && 'bg-surface4 text-neutral6')}
       >
+        {isUnread && !isActive && (
+          <span className="mr-2 h-2 w-2 shrink-0 rounded-full bg-accent3" aria-label="Unread replies" />
+        )}
         {children}
       </Button>
 
-      {onDelete && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-          onClick={onDelete}
-          aria-label={deleteLabel}
-        >
-          <X />
-        </Button>
+      {actions && (
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+          {actions}
+        </div>
       )}
     </li>
   );

@@ -1,7 +1,7 @@
 import type { StorageThreadType } from '@mastra/core/memory';
-import { AlertDialog, Icon, Skeleton } from '@mastra/playground-ui';
-import { Plus } from 'lucide-react';
-import { useState } from 'react';
+import { AlertDialog, Button, DropdownMenu, Icon, Input, Skeleton } from '@mastra/playground-ui';
+import { Ellipsis, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import {
   ThreadList,
   ThreadListEmpty,
@@ -18,13 +18,25 @@ export interface ChatThreadsProps {
   isLoading: boolean;
   threadId: string;
   onDelete: (threadId: string) => void;
+  onRename: (threadId: string, title: string) => void;
+  unreadThreadIds?: Set<string>;
   resourceId: string;
   resourceType: 'agent' | 'network';
 }
 
-export const ChatThreads = ({ threads, isLoading, threadId, onDelete, resourceId, resourceType }: ChatThreadsProps) => {
+export const ChatThreads = ({
+  threads,
+  isLoading,
+  threadId,
+  onDelete,
+  onRename,
+  unreadThreadIds,
+  resourceId,
+  resourceType,
+}: ChatThreadsProps) => {
   const { Link, paths } = useLinkComponent();
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [renameThread, setRenameThread] = useState<StorageThreadType | null>(null);
   const { canDelete } = usePermissions();
 
   const canDeleteThread = canDelete('memory');
@@ -65,8 +77,14 @@ export const ChatThreads = ({ threads, isLoading, threadId, onDelete, resourceId
                   as={Link}
                   to={threadLink}
                   isActive={isActive}
-                  onDelete={canDeleteThread ? () => setDeleteId(thread.id) : undefined}
-                  deleteLabel="delete thread"
+                  isUnread={unreadThreadIds?.has(thread.id)}
+                  actions={
+                    <ThreadActions
+                      canDelete={canDeleteThread}
+                      onRename={() => setRenameThread(thread)}
+                      onDelete={() => setDeleteId(thread.id)}
+                    />
+                  }
                 >
                   <ThreadTitle title={thread.title} id={thread.id} createdAt={thread.createdAt} />
                 </ThreadListItem>
@@ -85,9 +103,62 @@ export const ChatThreads = ({ threads, isLoading, threadId, onDelete, resourceId
           }
         }}
       />
+      <RenameThreadDialog
+        thread={renameThread}
+        onOpenChange={() => setRenameThread(null)}
+        onRename={title => {
+          if (renameThread) {
+            onRename(renameThread.id, title);
+            setRenameThread(null);
+          }
+        }}
+      />
     </>
   );
 };
+
+function ThreadActions({
+  canDelete,
+  onRename,
+  onDelete,
+}: {
+  canDelete: boolean;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenu.Trigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label="Chat actions" onClick={event => event.preventDefault()}>
+          <Ellipsis />
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content align="end">
+        <DropdownMenu.Item
+          onSelect={event => {
+            event.preventDefault();
+            onRename();
+          }}
+        >
+          <Pencil />
+          Rename
+        </DropdownMenu.Item>
+        {canDelete && (
+          <DropdownMenu.Item
+            variant="destructive"
+            onSelect={event => {
+              event.preventDefault();
+              onDelete();
+            }}
+          >
+            <Trash2 />
+            Delete
+          </DropdownMenu.Item>
+        )}
+      </DropdownMenu.Content>
+    </DropdownMenu>
+  );
+}
 
 interface DeleteThreadDialogProps {
   open: boolean;
@@ -107,6 +178,50 @@ const DeleteThreadDialog = ({ open, onOpenChange, onDelete }: DeleteThreadDialog
         <AlertDialog.Footer>
           <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
           <AlertDialog.Action onClick={onDelete}>Continue</AlertDialog.Action>
+        </AlertDialog.Footer>
+      </AlertDialog.Content>
+    </AlertDialog>
+  );
+};
+
+interface RenameThreadDialogProps {
+  thread: StorageThreadType | null;
+  onOpenChange: (n: boolean) => void;
+  onRename: (title: string) => void;
+}
+
+const RenameThreadDialog = ({ thread, onOpenChange, onRename }: RenameThreadDialogProps) => {
+  const [title, setTitle] = useState('');
+
+  useEffect(() => {
+    setTitle(thread ? (isDefaultThreadName(thread.title || '') ? '' : thread.title || '') : '');
+  }, [thread]);
+
+  return (
+    <AlertDialog open={!!thread} onOpenChange={onOpenChange}>
+      <AlertDialog.Content>
+        <AlertDialog.Header>
+          <AlertDialog.Title>Rename Chat</AlertDialog.Title>
+          <AlertDialog.Description>Set a new chat name.</AlertDialog.Description>
+        </AlertDialog.Header>
+        <div className="px-4 py-3.5">
+          <Input
+            autoFocus
+            value={title}
+            placeholder="Chat name"
+            onChange={event => setTitle(event.currentTarget.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && title.trim()) {
+                onRename(title.trim());
+              }
+            }}
+          />
+        </div>
+        <AlertDialog.Footer>
+          <AlertDialog.Cancel onClick={() => onOpenChange(false)}>Cancel</AlertDialog.Cancel>
+          <AlertDialog.Action disabled={!title.trim()} onClick={() => onRename(title.trim())}>
+            Rename
+          </AlertDialog.Action>
         </AlertDialog.Footer>
       </AlertDialog.Content>
     </AlertDialog>

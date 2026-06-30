@@ -1,6 +1,6 @@
 import type { StorageThreadType } from '@mastra/core/memory';
 import { ChatThreads } from '@/domains/agents/components/chat-threads';
-import { useDeleteThread } from '@/domains/memory/hooks/use-memory';
+import { useDeleteThread, useUpdateThread } from '@/domains/memory/hooks/use-memory';
 import { useLinkComponent } from '@/lib/framework';
 
 export function AgentSidebar({
@@ -8,20 +8,27 @@ export function AgentSidebar({
   threadId,
   threads,
   isLoading,
+  unreadThreadIds,
 }: {
   agentId: string;
   threadId: string;
   threads?: StorageThreadType[];
   isLoading: boolean;
+  unreadThreadIds?: Set<string>;
 }) {
-  const { mutateAsync } = useDeleteThread();
+  const { mutateAsync: deleteThread } = useDeleteThread();
+  const { mutateAsync: updateThread } = useUpdateThread();
   const { paths, navigate } = useLinkComponent();
 
   const handleDelete = async (deleteId: string) => {
-    await mutateAsync({ threadId: deleteId!, agentId });
+    await deleteThread({ threadId: deleteId!, agentId });
     if (deleteId === threadId) {
       navigate(paths.agentNewThreadLink(agentId));
     }
+  };
+
+  const handleRename = async (renameId: string, title: string) => {
+    await updateThread({ threadId: renameId, agentId, title });
   };
 
   return (
@@ -32,6 +39,8 @@ export function AgentSidebar({
       isLoading={isLoading}
       threadId={threadId}
       onDelete={handleDelete}
+      onRename={handleRename}
+      unreadThreadIds={unreadThreadIds}
     />
   );
 }

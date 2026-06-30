@@ -1,6 +1,6 @@
 import { v4 as uuid } from '@lukeed/uuid';
 import { PermissionDenied, SessionExpired, is401UnauthorizedError, is403ForbiddenError } from '@mastra/playground-ui';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { AgentSidebar } from '@/domains/agents/agent-sidebar';
 import { AgentChat } from '@/domains/agents/components/agent-chat';
@@ -21,6 +21,21 @@ import { SchemaRequestContextProvider } from '@/domains/request-context/context/
 
 import type { AgentSettingsType } from '@/types';
 
+const unreadStorageKey = (agentId: string) => `mastra:agent:${agentId}:unreadThreads`;
+
+function readUnreadThreadIds(agentId: string): Set<string> {
+  try {
+    return new Set(JSON.parse(window.localStorage.getItem(unreadStorageKey(agentId)) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeUnreadThreadIds(agentId: string, ids: Set<string>) {
+  window.localStorage.setItem(unreadStorageKey(agentId), JSON.stringify([...ids]));
+  window.dispatchEvent(new CustomEvent('mastra:unread-threads-changed', { detail: { agentId } }));
+}
+
 function Agent() {
   const { agentId, threadId } = useParams();
   const [searchParams] = useSearchParams();
@@ -28,6 +43,9 @@ function Agent() {
   const { data: memory } = useMemory(agentId!);
   const navigate = useNavigate();
   const isNewThread = threadId === 'new';
+  const [unreadThreadIds, setUnreadThreadIds] = useState<Set<string>>(() =>
+    agentId ? readUnreadThreadIds(agentId) : new Set(),
+  );
 
   // Generate a stable thread ID for new threads. Regenerate when threadId
   // changes (e.g., clicking "New Chat" navigates back to /chat/new).
@@ -51,6 +69,30 @@ function Agent() {
       })),
     [threads],
   );
+
+  useEffect(() => {
+    if (!agentId) return;
+
+    const syncUnreadThreads = () => setUnreadThreadIds(readUnreadThreadIds(agentId));
+    window.addEventListener('storage', syncUnreadThreads);
+    window.addEventListener('mastra:unread-threads-changed', syncUnreadThreads);
+    syncUnreadThreads();
+
+    return () => {
+      window.removeEventListener('storage', syncUnreadThreads);
+      window.removeEventListener('mastra:unread-threads-changed', syncUnreadThreads);
+    };
+  }, [agentId]);
+
+  useEffect(() => {
+    if (!agentId || !threadId || threadId === 'new') return;
+
+    const ids = readUnreadThreadIds(agentId);
+    if (!ids.delete(threadId)) return;
+
+    writeUnreadThreadIds(agentId, ids);
+    setUnreadThreadIds(ids);
+  }, [agentId, threadId]);
 
   useEffect(() => {
     if (threadId) return;
@@ -93,6 +135,34 @@ function Agent() {
     };
   }, [agent]);
 
+  const actualThreadId = isNewThread ? newThreadId : threadId;
+
+  const handleRefreshThreadList = useCallback(async () => {
+    if (!actualThreadId) return;
+
+    await refreshThreads();
+
+    const activePath = window.location.pathname;
+    const currentThreadPath = `/agents/${agentId}/chat/${actualThreadId}`;
+
+    if (isNewThread) {
+      if (activePath === `/agents/${agentId}/chat/new`) {
+        void navigate(currentThreadPath);
+      } else if (agentId) {
+        const ids = readUnreadThreadIds(agentId);
+        ids.add(actualThreadId);
+        writeUnreadThreadIds(agentId, ids);
+      }
+      return;
+    }
+
+    if (agentId && activePath !== currentThreadPath) {
+      const ids = readUnreadThreadIds(agentId);
+      ids.add(actualThreadId);
+      writeUnreadThreadIds(agentId, ids);
+    }
+  }, [actualThreadId, agentId, isNewThread, navigate, refreshThreads]);
+
   // 401 check - session expired, needs re-authentication
   if (error && is401UnauthorizedError(error)) {
     return (
@@ -123,16 +193,6 @@ function Agent() {
     return null;
   }
 
-  const actualThreadId = isNewThread ? newThreadId : threadId;
-
-  const handleRefreshThreadList = async () => {
-    await refreshThreads();
-
-    if (isNewThread) {
-      void navigate(`/agents/${agentId}/chat/${newThreadId}`);
-    }
-  };
-
   return (
     <TracingSettingsProvider entityId={agentId!} entityType="agent">
       <AgentSettingsProvider agentId={agentId!} defaultSettings={defaultSettings}>
@@ -157,6 +217,7 @@ function Agent() {
                               threadId={actualThreadId!}
                               threads={sidebarThreads}
                               isLoading={isThreadsLoading}
+                              unreadThreadIds={unreadThreadIds}
                             />
                           )
                         }

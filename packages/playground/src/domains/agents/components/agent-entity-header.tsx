@@ -11,6 +11,7 @@ import {
   useCopyToClipboard,
 } from '@mastra/playground-ui';
 import { CopyIcon, Link2, Check, Pencil } from 'lucide-react';
+import { useParams } from 'react-router';
 import { useAgent } from '../hooks/use-agent';
 import { useCanCreateAgent } from '@/domains/agent-builder/hooks/use-can-create-agent';
 import { useLinkComponent } from '@/lib/framework';
@@ -20,11 +21,14 @@ export interface AgentEntityHeaderProps {
 }
 
 export const AgentEntityHeader = ({ agentId }: AgentEntityHeaderProps) => {
+  const { threadId } = useParams();
   const { data: agent, isLoading } = useAgent(agentId);
   const { handleCopy } = useCopyToClipboard({ text: agentId });
   const { canCreateAgent } = useCanCreateAgent();
   const { Link: FrameworkLink, paths } = useLinkComponent();
-  const sessionUrl = `${window.location.origin}/agents/${agentId}/session`;
+  const sessionPath =
+    threadId && threadId !== 'new' ? `/agents/${agentId}/session/${threadId}` : window.location.pathname;
+  const sessionUrl = `${window.location.origin}${sessionPath}`;
   const { handleCopy: handleShareLink, isCopied: isShareCopied } = useCopyToClipboard({
     text: sessionUrl,
     copyMessage: 'Session URL copied to clipboard!',

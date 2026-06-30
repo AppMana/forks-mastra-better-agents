@@ -180,6 +180,7 @@ export function MastraRuntimeProvider({
 
   const { refetch: refreshWorkingMemory } = useWorkingMemory();
   const abortControllerRef = useRef<AbortController | null>(null);
+  const precreatedThreadIdsRef = useRef(new Set<string>());
   const queryClient = useQueryClient();
 
   // Check if OM is enabled from the agent's memory config.
@@ -323,9 +324,6 @@ export function MastraRuntimeProvider({
     // carry over errors from a previous failed run.
     setStreamErrors([]);
 
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
     const requestContextInstance = new RequestContext();
     Object.entries(requestContext ?? {}).forEach(([key, value]) => {
       requestContextInstance.set(key, value);
@@ -333,6 +331,26 @@ export function MastraRuntimeProvider({
     if (agentVersionId) {
       requestContextInstance.set('agentVersionId', agentVersionId);
     }
+
+    if (threadId && messages.length === 0 && !precreatedThreadIdsRef.current.has(threadId)) {
+      precreatedThreadIdsRef.current.add(threadId);
+      try {
+        await baseClient.createMemoryThread({
+          agentId,
+          threadId,
+          resourceId: agentId,
+          title: '',
+          requestContext: requestContextInstance,
+        });
+        await refreshThreadList?.();
+      } catch {
+        // The stream path may have already created the thread; duplicate create
+        // failures should not block the actual send.
+      }
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       if (chatWithNetwork) {

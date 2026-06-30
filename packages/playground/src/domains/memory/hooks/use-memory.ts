@@ -101,6 +101,41 @@ export const useDeleteThread = () => {
   });
 };
 
+export const useUpdateThread = () => {
+  const client = useMastraClient();
+  const queryClient = useQueryClient();
+  const requestContext = useMergedRequestContext();
+
+  return useMutation({
+    mutationFn: ({
+      threadId,
+      agentId,
+      title,
+      metadata = {},
+      resourceId = agentId,
+    }: {
+      threadId: string;
+      agentId: string;
+      title: string;
+      metadata?: Record<string, any>;
+      resourceId?: string;
+    }) => {
+      const thread = client.getMemoryThread({ threadId, agentId });
+      return thread.update({ title, metadata, resourceId, requestContext });
+    },
+    onSuccess: (_, variables) => {
+      const { agentId } = variables;
+      if (agentId) {
+        void queryClient.invalidateQueries({ queryKey: ['memory', 'threads', agentId, agentId] });
+      }
+      toast.success('Chat renamed successfully');
+    },
+    onError: () => {
+      toast.error('Failed to rename chat');
+    },
+  });
+};
+
 export const useMemorySearch = ({
   agentId,
   resourceId,
