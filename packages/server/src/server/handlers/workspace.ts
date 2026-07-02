@@ -23,11 +23,13 @@ import {
   fsDeleteQuerySchema,
   fsWriteBodySchema,
   fsMkdirBodySchema,
+  fsOperationBodySchema,
   fsReadResponseSchema,
   fsWriteResponseSchema,
   fsListResponseSchema,
   fsDeleteResponseSchema,
   fsMkdirResponseSchema,
+  fsOperationResponseSchema,
   fsStatResponseSchema,
   // Search schemas
   searchQuerySchema,
@@ -698,6 +700,70 @@ export const WORKSPACE_FS_MKDIR_ROUTE = createRoute({
       };
     } catch (error) {
       return handleWorkspaceError(error, 'Error creating directory');
+    }
+  },
+});
+
+export const WORKSPACE_FS_OPERATION_ROUTE = createRoute({
+  method: 'POST',
+  path: '/workspaces/:workspaceId/fs/operation',
+  responseType: 'json',
+  pathParamSchema: workspaceIdPathParams,
+  bodySchema: fsOperationBodySchema,
+  responseSchema: fsOperationResponseSchema,
+  summary: 'Copy, move, duplicate, or rename a workspace path',
+  description: 'Performs filesystem operations server-side using the configured workspace filesystem provider.',
+  tags: ['Workspace'],
+  handler: async ({ mastra, operation, sourcePath, destinationPath, overwrite, recursive, workspaceId }) => {
+    try {
+      requireWorkspaceV1Support();
+
+      if (!sourcePath || !destinationPath) {
+        throw new HTTPException(400, { message: 'sourcePath and destinationPath are required' });
+      }
+
+      const workspace = await getWorkspaceById(mastra, workspaceId);
+      if (!workspace?.filesystem) {
+        throw new HTTPException(404, { message: 'No workspace filesystem configured' });
+      }
+
+      if (workspace.filesystem?.readOnly) {
+        throw new HTTPException(403, { message: 'Workspace is in read-only mode' });
+      }
+
+      const decodedSourcePath = decodeURIComponent(sourcePath);
+      const decodedDestinationPath = decodeURIComponent(destinationPath);
+
+      if (!(await workspace.filesystem.exists(decodedSourcePath))) {
+        throw new HTTPException(404, { message: `Path "${decodedSourcePath}" not found` });
+      }
+
+      const options = {
+        overwrite: overwrite ?? false,
+        recursive: recursive ?? true,
+      };
+
+      switch (operation) {
+        case 'copy':
+        case 'duplicate':
+          await workspace.filesystem.copyFile(decodedSourcePath, decodedDestinationPath, options);
+          break;
+        case 'move':
+        case 'rename':
+          await workspace.filesystem.moveFile(decodedSourcePath, decodedDestinationPath, options);
+          break;
+        default:
+          throw new HTTPException(400, { message: `Unsupported operation "${operation}"` });
+      }
+
+      return {
+        success: true,
+        operation,
+        sourcePath: decodedSourcePath,
+        destinationPath: decodedDestinationPath,
+      };
+    } catch (error) {
+      return handleWorkspaceError(error, 'Error performing filesystem operation');
     }
   },
 });
@@ -1795,6 +1861,7 @@ export const WORKSPACE_FS_ROUTES = [
   WORKSPACE_FS_LIST_ROUTE,
   WORKSPACE_FS_DELETE_ROUTE,
   WORKSPACE_FS_MKDIR_ROUTE,
+  WORKSPACE_FS_OPERATION_ROUTE,
   WORKSPACE_FS_STAT_ROUTE,
 ];
 

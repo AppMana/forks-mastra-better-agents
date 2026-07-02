@@ -7,6 +7,8 @@ import type {
   WorkspaceFsDeleteResponse,
   WorkspaceFsMkdirResponse,
   WorkspaceFsStatResponse,
+  WorkspaceFsOperation,
+  WorkspaceFsOperationResponse,
   WorkspaceSearchParams,
   WorkspaceSearchResponse,
   WorkspaceIndexParams,
@@ -199,6 +201,25 @@ export class Workspace extends BaseResource {
     const searchParams = new URLSearchParams();
     searchParams.set('path', path);
     return this.request(`${this.basePath}/fs/stat?${searchParams.toString()}`);
+  }
+
+  /**
+   * Performs a server-side filesystem operation in the workspace.
+   *
+   * Uses the configured filesystem provider's copyFile/moveFile methods, so
+   * large files and directories do not pass through the browser client.
+   */
+  operation(params: {
+    operation: WorkspaceFsOperation;
+    sourcePath: string;
+    destinationPath: string;
+    overwrite?: boolean;
+    recursive?: boolean;
+  }): Promise<WorkspaceFsOperationResponse> {
+    return this.request(`${this.basePath}/fs/operation`, {
+      method: 'POST',
+      body: params,
+    });
   }
 
   // ==========================================================================

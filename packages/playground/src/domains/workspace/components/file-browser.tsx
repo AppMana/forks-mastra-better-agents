@@ -36,6 +36,8 @@ import {
   ClipboardCopy,
   ClipboardPaste,
   CopyPlus,
+  Pencil,
+  Link,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -59,9 +61,11 @@ export interface FileBrowserProps {
   onCreateDirectory?: (path: string) => void | Promise<void>;
   onDelete?: (path: string) => void | Promise<void>;
   onDuplicate?: (path: string, entry: FileEntry) => void | Promise<void>;
+  onRename?: (path: string, entry: FileEntry, nextName: string) => void | Promise<void>;
   onCut?: (path: string, entry: FileEntry) => void;
   onCopy?: (path: string, entry: FileEntry) => void;
   onPaste?: (path: string) => void | Promise<void>;
+  onConnectNativeDrive?: () => void;
   canPaste?: boolean;
   /** Shows loading state on create directory button */
   isCreatingDirectory?: boolean;
@@ -259,15 +263,19 @@ export function FileBrowser({
   onCreateDirectory,
   onDelete,
   onDuplicate,
+  onRename,
   onCut,
   onCopy,
   onPaste,
+  onConnectNativeDrive,
   canPaste,
   isCreatingDirectory,
   isDeleting,
   isFileOperationPending,
 }: FileBrowserProps) {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ path: string; entry: FileEntry } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const [showCreateDirectory, setShowCreateDirectory] = useState(false);
   const [directoryName, setDirectoryName] = useState('');
 
@@ -292,6 +300,12 @@ export function FileBrowser({
   const handleDelete = (entry: FileEntry) => {
     const fullPath = isRoot ? entry.name : `${currentPath}/${entry.name}`;
     setDeleteTarget(fullPath);
+  };
+
+  const handleRename = (entry: FileEntry) => {
+    const fullPath = isRoot ? entry.name : `${currentPath}/${entry.name}`;
+    setRenameTarget({ path: fullPath, entry });
+    setRenameValue(entry.name);
   };
 
   const getEntryPath = (entry: FileEntry) => (isRoot ? entry.name : `${currentPath}/${entry.name}`);
@@ -325,6 +339,11 @@ export function FileBrowser({
               onClick={() => setShowCreateDirectory(true)}
             >
               {isCreatingDirectory ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderPlus className="h-4 w-4" />}
+            </Button>
+          )}
+          {onConnectNativeDrive && (
+            <Button variant="ghost" size="md" onClick={onConnectNativeDrive} aria-label="Connect native drive">
+              <Link className="h-4 w-4" />
             </Button>
           )}
           {onPaste && canPaste && (
@@ -390,7 +409,7 @@ export function FileBrowser({
                 const mountLabel = entry.mount?.displayName || entry.mount?.provider;
                 const isError = entry.mount?.status === 'error';
                 const fullPath = getEntryPath(entry);
-                const fileOperationsDisabled = entry.type !== 'file' || !!entry.mount || isFileOperationPending;
+                const fileOperationsDisabled = !!entry.mount || isFileOperationPending;
 
                 return (
                   <li key={entry.name} className="group">
@@ -442,7 +461,7 @@ export function FileBrowser({
                               <span className="text-xs text-neutral3 tabular-nums">{formatBytes(entry.size)}</span>
                             )}
                           </button>
-                          {(onDelete || onDuplicate || onCut || onCopy) && !entry.mount && (
+                          {(onDelete || onDuplicate || onRename || onCut || onCopy) && !entry.mount && (
                             <DropdownMenu modal={false}>
                               <DropdownMenu.Trigger asChild>
                                 <button
@@ -460,6 +479,15 @@ export function FileBrowser({
                                   >
                                     <CopyPlus className="h-3.5 w-3.5 mr-2" />
                                     Duplicate
+                                  </DropdownMenu.Item>
+                                )}
+                                {onRename && (
+                                  <DropdownMenu.Item
+                                    disabled={fileOperationsDisabled}
+                                    onSelect={() => handleRename(entry)}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5 mr-2" />
+                                    Rename
                                   </DropdownMenu.Item>
                                 )}
                                 {onCut && (
@@ -482,7 +510,7 @@ export function FileBrowser({
                                 )}
                                 {onDelete && (
                                   <>
-                                    {(onDuplicate || onCut || onCopy) && <DropdownMenu.Separator />}
+                                    {(onDuplicate || onRename || onCut || onCopy) && <DropdownMenu.Separator />}
                                     <DropdownMenu.Item onSelect={() => handleDelete(entry)}>
                                       <Trash2 className="h-3.5 w-3.5 mr-2" />
                                       Delete
@@ -494,7 +522,7 @@ export function FileBrowser({
                           )}
                         </div>
                       </ContextMenu.Trigger>
-                      {(onDelete || onDuplicate || onCut || onCopy) && !entry.mount && (
+                      {(onDelete || onDuplicate || onRename || onCut || onCopy) && !entry.mount && (
                         <ContextMenu.Content align="start">
                           {onDuplicate && (
                             <ContextMenu.Item
@@ -503,6 +531,12 @@ export function FileBrowser({
                             >
                               <CopyPlus className="h-3.5 w-3.5 mr-2" />
                               Duplicate
+                            </ContextMenu.Item>
+                          )}
+                          {onRename && (
+                            <ContextMenu.Item disabled={fileOperationsDisabled} onSelect={() => handleRename(entry)}>
+                              <Pencil className="h-3.5 w-3.5 mr-2" />
+                              Rename
                             </ContextMenu.Item>
                           )}
                           {onCut && (
@@ -522,7 +556,7 @@ export function FileBrowser({
                           )}
                           {onDelete && (
                             <>
-                              {(onDuplicate || onCut || onCopy) && <ContextMenu.Separator />}
+                              {(onDuplicate || onRename || onCut || onCopy) && <ContextMenu.Separator />}
                               <ContextMenu.Item onSelect={() => handleDelete(entry)}>
                                 <Trash2 className="h-3.5 w-3.5 mr-2" />
                                 Delete
@@ -579,6 +613,64 @@ export function FileBrowser({
             >
               {isCreatingDirectory ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Create
+            </Button>
+          </AlertDialog.Footer>
+        </AlertDialog.Content>
+      </AlertDialog>
+
+      {/* Rename */}
+      <AlertDialog
+        open={!!renameTarget}
+        onOpenChange={open => {
+          if (!isFileOperationPending && !open) {
+            setRenameTarget(null);
+            setRenameValue('');
+          }
+        }}
+      >
+        <AlertDialog.Content>
+          <AlertDialog.Header>
+            <AlertDialog.Title>Rename Item</AlertDialog.Title>
+            <AlertDialog.Description>Rename "{renameTarget?.entry.name}".</AlertDialog.Description>
+          </AlertDialog.Header>
+          <AlertDialog.Body>
+            <Input
+              autoFocus
+              value={renameValue}
+              onChange={event => setRenameValue(event.currentTarget.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  const nextName = renameValue.trim();
+                  if (renameTarget && nextName && onRename) {
+                    void Promise.resolve(onRename(renameTarget.path, renameTarget.entry, nextName)).finally(() => {
+                      setRenameTarget(null);
+                      setRenameValue('');
+                    });
+                  }
+                }
+              }}
+              placeholder="New name"
+            />
+          </AlertDialog.Body>
+          <AlertDialog.Footer>
+            <AlertDialog.Cancel disabled={isFileOperationPending}>Cancel</AlertDialog.Cancel>
+            <Button
+              disabled={
+                isFileOperationPending || !renameValue.trim() || renameValue.trim() === renameTarget?.entry.name
+              }
+              onClick={() => {
+                const nextName = renameValue.trim();
+                if (renameTarget && nextName && onRename) {
+                  void Promise.resolve(onRename(renameTarget.path, renameTarget.entry, nextName)).finally(() => {
+                    setRenameTarget(null);
+                    setRenameValue('');
+                  });
+                }
+              }}
+            >
+              {isFileOperationPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Rename
             </Button>
           </AlertDialog.Footer>
         </AlertDialog.Content>

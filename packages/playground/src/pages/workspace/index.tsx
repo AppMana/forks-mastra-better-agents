@@ -1,5 +1,7 @@
 import {
   Button,
+  AlertDialog,
+  CopyButton,
   ErrorState,
   NoDataPageLayout,
   PageLayout,
@@ -48,6 +50,7 @@ export default function Workspace() {
   const [showSearch, setShowSearch] = useState(false);
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
   const [showAddSkillDialog, setShowAddSkillDialog] = useState(false);
+  const [showNativeDriveDialog, setShowNativeDriveDialog] = useState(false);
   const [removingSkillName, setRemovingSkillName] = useState<string | null>(null);
   const [updatingSkillName, setUpdatingSkillName] = useState<string | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -95,17 +98,20 @@ export default function Workspace() {
     : undefined;
 
   // Helper to update URL query params while preserving others
-  const updateSearchParams = (updates: Record<string, string | null>) => {
-    const newParams = new URLSearchParams(searchParams);
-    for (const [key, value] of Object.entries(updates)) {
-      if (value === null) {
-        newParams.delete(key);
-      } else {
-        newParams.set(key, value);
+  const updateSearchParams = useCallback(
+    (updates: Record<string, string | null>) => {
+      const newParams = new URLSearchParams(searchParams);
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null) {
+          newParams.delete(key);
+        } else {
+          newParams.set(key, value);
+        }
       }
-    }
-    setSearchParams(newParams);
-  };
+      setSearchParams(newParams);
+    },
+    [searchParams, setSearchParams],
+  );
 
   // Navigate to a different workspace (changes path, resets query params)
   const setSelectedWorkspaceId = (id: string) => {
@@ -118,9 +124,12 @@ export default function Workspace() {
     updateSearchParams({ path: path === '.' || path === '' ? null : path, file: null });
   };
 
-  const setSelectedFile = (file: string | null) => {
-    updateSearchParams({ file });
-  };
+  const setSelectedFile = useCallback(
+    (file: string | null) => {
+      updateSearchParams({ file });
+    },
+    [updateSearchParams],
+  );
 
   const setActiveTab = (tab: TabType) => {
     updateSearchParams({ tab });
@@ -211,9 +220,14 @@ export default function Workspace() {
     return `${name.slice(0, dotIndex)} copy${name.slice(dotIndex)}`;
   }, []);
 
+  const buildSiblingPath = useCallback((sourcePath: string, nextName: string) => {
+    const parent = sourcePath.split('/').slice(0, -1).join('/');
+    return parent ? `${parent}/${nextName}` : nextName;
+  }, []);
+
   const handleDuplicate = useCallback(
     async (sourcePath: string, entry: FileEntry) => {
-      if (!effectiveWorkspaceId || entry.type !== 'file') return;
+      if (!effectiveWorkspaceId) return;
       const duplicatePath = buildPath(currentPath, buildDuplicateName(entry.name));
       try {
         await fileOperation.mutateAsync({
@@ -221,6 +235,7 @@ export default function Workspace() {
           operation: 'duplicate',
           sourcePath,
           destinationPath: duplicatePath,
+          recursive: entry.type === 'directory',
         });
         toast.success(`Duplicated ${entry.name}`);
         void refetchFiles();
@@ -231,9 +246,33 @@ export default function Workspace() {
     [buildDuplicateName, buildPath, currentPath, effectiveWorkspaceId, fileOperation, refetchFiles],
   );
 
+  const handleRename = useCallback(
+    async (sourcePath: string, entry: FileEntry, nextName: string) => {
+      if (!effectiveWorkspaceId) return;
+      const destinationPath = buildSiblingPath(sourcePath, nextName);
+      try {
+        await fileOperation.mutateAsync({
+          workspaceId: effectiveWorkspaceId,
+          operation: 'rename',
+          sourcePath,
+          destinationPath,
+          recursive: entry.type === 'directory',
+        });
+        toast.success(`Renamed ${entry.name}`);
+        if (selectedFile === sourcePath) {
+          setSelectedFile(destinationPath);
+        }
+        void refetchFiles();
+      } catch (error) {
+        toast.error(`Failed to rename item: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    },
+    [buildSiblingPath, effectiveWorkspaceId, fileOperation, refetchFiles, selectedFile, setSelectedFile],
+  );
+
   const handlePaste = useCallback(
     async (destinationDirectory: string) => {
-      if (!effectiveWorkspaceId || !clipboardItem || clipboardItem.entry.type !== 'file') return;
+      if (!effectiveWorkspaceId || !clipboardItem) return;
       const destinationPath = buildPath(destinationDirectory, clipboardItem.entry.name);
       try {
         await fileOperation.mutateAsync({
@@ -241,6 +280,7 @@ export default function Workspace() {
           operation: clipboardItem.operation,
           sourcePath: clipboardItem.path,
           destinationPath,
+          recursive: clipboardItem.entry.type === 'directory',
         });
         toast.success(`${clipboardItem.operation === 'cut' ? 'Moved' : 'Copied'} ${clipboardItem.entry.name}`);
         if (clipboardItem.operation === 'cut') {
@@ -576,7 +616,7 @@ export default function Workspace() {
         )}
 
         {(hasFilesystem || hasSkills) && (
-          <Tabs value={activeTab} onValueChange={setActiveTab} defaultTab={activeTab}>
+          <Tabs value={activeTab} onValueChange={setActiveTab} defaultTab={activeTab} className="w-full min-w-0">
             <TabList>
               {hasFilesystem && (
                 <Tab value="files">
@@ -596,7 +636,7 @@ export default function Workspace() {
             </TabList>
 
             {hasFilesystem && (
-              <TabContent value="files" className="pb-8">
+              <TabContent value="files" className="pb-8 w-full min-w-0">
                 <div
                   className={`grid grid-cols-1 gap-4 w-full ${
                     selectedFile ? 'xl:grid-cols-[minmax(0,1fr)_minmax(360px,40%)]' : ''
@@ -617,6 +657,7 @@ export default function Workspace() {
                         : path => createDirectory.mutate({ path, workspaceId: effectiveWorkspaceId })
                     }
                     onDuplicate={isReadOnly ? undefined : handleDuplicate}
+                    onRename={isReadOnly ? undefined : handleRename}
                     onCut={
                       isReadOnly
                         ? undefined
@@ -635,6 +676,7 @@ export default function Workspace() {
                     }
                     onPaste={isReadOnly ? undefined : handlePaste}
                     canPaste={!!clipboardItem}
+                    onConnectNativeDrive={() => setShowNativeDriveDialog(true)}
                     onDelete={
                       isReadOnly
                         ? undefined
@@ -669,7 +711,7 @@ export default function Workspace() {
             )}
 
             {hasSkills && (
-              <TabContent value="skills" className="pb-8">
+              <TabContent value="skills" className="pb-8 w-full min-w-0">
                 <SkillsTable
                   skills={skills}
                   isLoading={isLoadingSkills}
@@ -712,7 +754,53 @@ export default function Workspace() {
           installedSkillPaths={Object.fromEntries(skills.filter(s => s.path).map(s => [s.name, s.path]))}
         />
       )}
+      <NativeDriveDialog open={showNativeDriveDialog} onOpenChange={setShowNativeDriveDialog} />
     </PageLayout>
+  );
+}
+
+function NativeDriveDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const webdavUrl = 'https://files.appmana.com/dav/';
+  const windowsCommand = `net use Z: ${webdavUrl} /user:<webdav-username> <app-password> /persistent:yes`;
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialog.Content>
+        <AlertDialog.Header>
+          <AlertDialog.Title>Connect Native Drive</AlertDialog.Title>
+          <AlertDialog.Description>
+            Use your WebDAV app password to mount the shared workspace in Finder or Windows File Explorer.
+          </AlertDialog.Description>
+        </AlertDialog.Header>
+        <AlertDialog.Body>
+          <div className="space-y-4 text-sm text-neutral5">
+            <div className="rounded-md border border-border1 bg-surface3 p-3">
+              <div className="mb-2 text-xs uppercase text-neutral3">WebDAV URL</div>
+              <div className="flex items-center gap-2">
+                <code className="min-w-0 flex-1 truncate text-neutral6">{webdavUrl}</code>
+                <CopyButton content={webdavUrl} copyMessage="Copied WebDAV URL" />
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 font-medium text-neutral6">macOS</div>
+              <p>Finder: Go → Connect to Server, then enter the WebDAV URL and your WebDAV app credentials.</p>
+            </div>
+            <div>
+              <div className="mb-1 font-medium text-neutral6">Windows</div>
+              <div className="rounded-md border border-border1 bg-surface3 p-3">
+                <div className="flex items-center gap-2">
+                  <code className="min-w-0 flex-1 whitespace-pre-wrap text-neutral6">{windowsCommand}</code>
+                  <CopyButton content={windowsCommand} copyMessage="Copied Windows command" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </AlertDialog.Body>
+        <AlertDialog.Footer>
+          <AlertDialog.Action onClick={() => onOpenChange(false)}>Done</AlertDialog.Action>
+        </AlertDialog.Footer>
+      </AlertDialog.Content>
+    </AlertDialog>
   );
 }
 

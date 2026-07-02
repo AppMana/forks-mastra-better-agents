@@ -1935,6 +1935,15 @@ export type WorkspaceFsMkdirResponse = GeneratedResponse<'POST /workspaces/:work
  */
 export type WorkspaceFsStatResponse = GeneratedResponse<'GET /workspaces/:workspaceId/fs/stat'>;
 
+export type WorkspaceFsOperation = 'copy' | 'move' | 'duplicate' | 'rename';
+
+export interface WorkspaceFsOperationResponse {
+  success: boolean;
+  operation: WorkspaceFsOperation;
+  sourcePath: string;
+  destinationPath: string;
+}
+
 /**
  * Workspace search result
  */

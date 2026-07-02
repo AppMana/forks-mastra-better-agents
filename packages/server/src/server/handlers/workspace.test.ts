@@ -15,6 +15,7 @@ import {
   WORKSPACE_FS_LIST_ROUTE,
   WORKSPACE_FS_DELETE_ROUTE,
   WORKSPACE_FS_MKDIR_ROUTE,
+  WORKSPACE_FS_OPERATION_ROUTE,
   WORKSPACE_FS_STAT_ROUTE,
   WORKSPACE_SEARCH_ROUTE,
   WORKSPACE_INDEX_ROUTE,
@@ -778,6 +779,89 @@ describe('Workspace Handlers', () => {
       } catch (e) {
         expect((e as HTTPException).status).toBe(403);
         expect((e as HTTPException).message).toBe('Workspace is in read-only mode');
+      }
+    });
+  });
+
+  describe('WORKSPACE_FS_OPERATION_ROUTE', () => {
+    it('should copy a workspace path server-side', async () => {
+      const workspace = createWorkspace('test', { files: new Map([['/source.txt', 'content']]) });
+      const mastra = createMastra(workspace);
+
+      const result = await WORKSPACE_FS_OPERATION_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+        workspaceId: 'test',
+        operation: 'copy',
+        sourcePath: '/source.txt',
+        destinationPath: '/copy.txt',
+      });
+
+      expect(result).toEqual({
+        success: true,
+        operation: 'copy',
+        sourcePath: '/source.txt',
+        destinationPath: '/copy.txt',
+      });
+      expect(workspace.filesystem!.copyFile).toHaveBeenCalledWith('/source.txt', '/copy.txt', {
+        overwrite: false,
+        recursive: true,
+      });
+    });
+
+    it('should move a workspace path server-side for rename', async () => {
+      const workspace = createWorkspace('test', { files: new Map([['/old.txt', 'content']]) });
+      const mastra = createMastra(workspace);
+
+      const result = await WORKSPACE_FS_OPERATION_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+        workspaceId: 'test',
+        operation: 'rename',
+        sourcePath: '/old.txt',
+        destinationPath: '/new.txt',
+      });
+
+      expect(result.operation).toBe('rename');
+      expect(workspace.filesystem!.moveFile).toHaveBeenCalledWith('/old.txt', '/new.txt', {
+        overwrite: false,
+        recursive: true,
+      });
+    });
+
+    it('should reject operations on read-only workspaces', async () => {
+      const workspace = createWorkspace('test', { files: new Map([['/source.txt', 'content']]), readOnly: true });
+      const mastra = createMastra(workspace);
+
+      try {
+        await WORKSPACE_FS_OPERATION_ROUTE.handler({
+          ...createTestServerContext({ mastra }),
+          workspaceId: 'test',
+          operation: 'copy',
+          sourcePath: '/source.txt',
+          destinationPath: '/copy.txt',
+        });
+        expect.fail('Expected operation to throw');
+      } catch (e) {
+        expect(e).toBeInstanceOf(HTTPException);
+        expect((e as HTTPException).status).toBe(403);
+      }
+    });
+
+    it('should reject missing source paths', async () => {
+      const workspace = createWorkspace('test');
+      const mastra = createMastra(workspace);
+
+      try {
+        await WORKSPACE_FS_OPERATION_ROUTE.handler({
+          ...createTestServerContext({ mastra }),
+          workspaceId: 'test',
+          operation: 'copy',
+          sourcePath: '/missing.txt',
+          destinationPath: '/copy.txt',
+        });
+        expect.fail('Expected operation to throw');
+      } catch (e) {
+        expect(e).toBeInstanceOf(HTTPException);
+        expect((e as HTTPException).status).toBe(404);
       }
     });
   });

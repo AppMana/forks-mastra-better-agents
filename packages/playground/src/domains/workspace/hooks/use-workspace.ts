@@ -232,23 +232,23 @@ export const useWorkspaceFileOperation = () => {
   return useMutation({
     mutationFn: async (params: {
       workspaceId: string;
-      operation: 'copy' | 'cut' | 'duplicate';
+      operation: 'copy' | 'cut' | 'duplicate' | 'rename';
       sourcePath: string;
       destinationPath: string;
+      overwrite?: boolean;
+      recursive?: boolean;
     }) => {
       if (!isWorkspaceV1Supported(client)) {
         throw new Error('Workspace v1 not supported by core or client');
       }
       const workspace = (client as any).getWorkspace(params.workspaceId);
-      const source = await workspace.readFile(params.sourcePath, 'base64');
-      await workspace.writeFile(params.destinationPath, source.content, {
-        encoding: 'base64',
-        recursive: true,
+      return workspace.operation({
+        operation: params.operation === 'cut' ? 'move' : params.operation,
+        sourcePath: params.sourcePath,
+        destinationPath: params.destinationPath,
+        overwrite: params.overwrite ?? false,
+        recursive: params.recursive ?? true,
       });
-      if (params.operation === 'cut') {
-        await workspace.delete(params.sourcePath, { force: true });
-      }
-      return { path: params.destinationPath };
     },
     onSuccess: (_, variables) => {
       const sourceParentPath = getParentPath(variables.sourcePath);

@@ -61,6 +61,14 @@ export const fsMkdirBodySchema = z.object({
   recursive: z.coerce.boolean().optional().describe('Create parent directories if needed'),
 });
 
+export const fsOperationBodySchema = z.object({
+  operation: z.enum(['copy', 'move', 'duplicate', 'rename']).describe('Filesystem operation to perform'),
+  sourcePath: z.string().describe('Source file or directory path'),
+  destinationPath: z.string().describe('Destination file or directory path'),
+  overwrite: z.coerce.boolean().optional().describe('Overwrite existing destination'),
+  recursive: z.coerce.boolean().optional().describe('Copy/move directories recursively'),
+});
+
 // =============================================================================
 // Filesystem Response Schemas
 // =============================================================================
@@ -120,6 +128,13 @@ export const fsDeleteResponseSchema = z.object({
 export const fsMkdirResponseSchema = z.object({
   success: z.boolean(),
   path: z.string(),
+});
+
+export const fsOperationResponseSchema = z.object({
+  success: z.boolean(),
+  operation: z.enum(['copy', 'move', 'duplicate', 'rename']),
+  sourcePath: z.string(),
+  destinationPath: z.string(),
 });
 
 export const fsStatResponseSchema = z.object({
