@@ -106,6 +106,26 @@ export interface FileStatResponse {
   mimeType?: string;
 }
 
+export type WorkspaceSharingPlatform = 'windows' | 'macos' | 'linux';
+
+export interface WorkspaceSharingPlatformInfo {
+  url: string;
+  username: string;
+  password: string;
+  instructions: string;
+}
+
+export interface WorkspaceSharingInfo {
+  username: string;
+  password: string;
+  webdavUrl: string;
+  httpsUrlWithCredentials: string;
+  nautilusUrl: string;
+  windows: WorkspaceSharingPlatformInfo;
+  macos: WorkspaceSharingPlatformInfo;
+  linux: WorkspaceSharingPlatformInfo;
+}
+
 export interface WriteFileParams {
   workspaceId: string;
   path: string;

@@ -11,6 +11,7 @@ import type {
   WriteFileFromFileParams,
   SearchWorkspaceParams,
   SearchResponse,
+  WorkspaceSharingInfo,
 } from '../types';
 
 function getParentPath(path: string): string {
@@ -258,6 +259,34 @@ export const useWorkspaceFileOperation = () => {
       void queryClient.invalidateQueries({ queryKey: ['workspace', 'file', variables.sourcePath] });
       void queryClient.invalidateQueries({ queryKey: ['workspace', 'file', variables.destinationPath] });
     },
+  });
+};
+
+export const useWorkspaceSharing = (options?: { enabled?: boolean }) => {
+  return useQuery({
+    queryKey: ['workspace', 'sharing'],
+    queryFn: async (): Promise<WorkspaceSharingInfo> => {
+      const response = await fetch('/dragon/workspace/sharing', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+          const body = (await response.json()) as { error?: string; message?: string };
+          message = body.error ?? body.message ?? message;
+        } catch {
+          // Keep the status fallback.
+        }
+        throw new Error(message);
+      }
+      return (await response.json()) as WorkspaceSharingInfo;
+    },
+    enabled: options?.enabled !== false,
+    retry: false,
   });
 };
 

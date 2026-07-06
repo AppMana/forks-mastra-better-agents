@@ -37,12 +37,16 @@ import {
   ClipboardPaste,
   CopyPlus,
   Pencil,
-  Link,
+  Share2,
+  Monitor,
+  Command,
+  Terminal,
+  ChevronDown,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { coldarkDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
-import type { FileEntry } from '../types';
+import type { FileEntry, WorkspaceSharingPlatform } from '../types';
 
 // =============================================================================
 // Type Definitions
@@ -65,7 +69,7 @@ export interface FileBrowserProps {
   onCut?: (path: string, entry: FileEntry) => void;
   onCopy?: (path: string, entry: FileEntry) => void;
   onPaste?: (path: string) => void | Promise<void>;
-  onConnectNativeDrive?: () => void;
+  onOpenSharing?: (platform: WorkspaceSharingPlatform) => void;
   canPaste?: boolean;
   /** Shows loading state on create directory button */
   isCreatingDirectory?: boolean;
@@ -267,7 +271,7 @@ export function FileBrowser({
   onCut,
   onCopy,
   onPaste,
-  onConnectNativeDrive,
+  onOpenSharing,
   canPaste,
   isCreatingDirectory,
   isDeleting,
@@ -341,10 +345,30 @@ export function FileBrowser({
               {isCreatingDirectory ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderPlus className="h-4 w-4" />}
             </Button>
           )}
-          {onConnectNativeDrive && (
-            <Button variant="ghost" size="md" onClick={onConnectNativeDrive} aria-label="Connect native drive">
-              <Link className="h-4 w-4" />
-            </Button>
+          {onOpenSharing && (
+            <DropdownMenu modal={false}>
+              <DropdownMenu.Trigger asChild>
+                <Button variant="ghost" size="md" aria-label="Sharing options">
+                  <Share2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Sharing...</span>
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content align="end">
+                <DropdownMenu.Item onSelect={() => onOpenSharing('windows')}>
+                  <Monitor className="h-3.5 w-3.5 mr-2" />
+                  Access in Windows
+                </DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => onOpenSharing('macos')}>
+                  <Command className="h-3.5 w-3.5 mr-2" />
+                  Access in macOS
+                </DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => onOpenSharing('linux')}>
+                  <Terminal className="h-3.5 w-3.5 mr-2" />
+                  Access in Ubuntu
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu>
           )}
           {onPaste && canPaste && (
             <Button

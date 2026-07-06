@@ -36,9 +36,15 @@ import {
   useWorkspaceFile,
   useWriteWorkspaceFileFromFile,
   useWorkspaceFileOperation,
+  useWorkspaceSharing,
 } from '@/domains/workspace/hooks/use-workspace';
 import { useWorkspaceSkills, useSearchWorkspaceSkills } from '@/domains/workspace/hooks/use-workspace-skills';
-import type { WorkspaceItem, FileEntry } from '@/domains/workspace/types';
+import type {
+  WorkspaceItem,
+  FileEntry,
+  WorkspaceSharingInfo,
+  WorkspaceSharingPlatform,
+} from '@/domains/workspace/types';
 import { buildWorkspaceUploadPath } from '@/domains/workspace/workspace-upload';
 
 type TabType = 'files' | 'skills';
@@ -50,7 +56,7 @@ export default function Workspace() {
   const [showSearch, setShowSearch] = useState(false);
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
   const [showAddSkillDialog, setShowAddSkillDialog] = useState(false);
-  const [showNativeDriveDialog, setShowNativeDriveDialog] = useState(false);
+  const [sharingPlatform, setSharingPlatform] = useState<WorkspaceSharingPlatform | null>(null);
   const [removingSkillName, setRemovingSkillName] = useState<string | null>(null);
   const [updatingSkillName, setUpdatingSkillName] = useState<string | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -183,6 +189,7 @@ export default function Workspace() {
   // Can manage skills (install/remove/check/update) if we have filesystem and not read-only
   // None of these operations require sandbox - all are done via GitHub API + filesystem
   const canManageSkills = hasFilesystem && !isReadOnly;
+  const workspaceSharing = useWorkspaceSharing({ enabled: hasFilesystem });
 
   const handleUploadFiles = useCallback(
     async (files: FileList | null) => {
@@ -676,7 +683,7 @@ export default function Workspace() {
                     }
                     onPaste={isReadOnly ? undefined : handlePaste}
                     canPaste={!!clipboardItem}
-                    onConnectNativeDrive={() => setShowNativeDriveDialog(true)}
+                    onOpenSharing={platform => setSharingPlatform(platform)}
                     onDelete={
                       isReadOnly
                         ? undefined
@@ -754,47 +761,107 @@ export default function Workspace() {
           installedSkillPaths={Object.fromEntries(skills.filter(s => s.path).map(s => [s.name, s.path]))}
         />
       )}
-      <NativeDriveDialog open={showNativeDriveDialog} onOpenChange={setShowNativeDriveDialog} />
+      <NativeDriveDialog
+        open={!!sharingPlatform}
+        onOpenChange={open => !open && setSharingPlatform(null)}
+        platform={sharingPlatform ?? 'windows'}
+        sharingInfo={workspaceSharing.data}
+        isLoading={workspaceSharing.isLoading}
+        error={workspaceSharing.error instanceof Error ? workspaceSharing.error : null}
+      />
     </PageLayout>
   );
 }
 
-function NativeDriveDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const webdavUrl = 'https://files.appmana.com/dav/';
-  const windowsCommand = `net use Z: ${webdavUrl} /user:<webdav-username> <app-password> /persistent:yes`;
+function NativeDriveDialog({
+  open,
+  onOpenChange,
+  platform,
+  sharingInfo,
+  isLoading,
+  error,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  platform: WorkspaceSharingPlatform;
+  sharingInfo?: WorkspaceSharingInfo;
+  isLoading: boolean;
+  error: Error | null;
+}) {
+  const platformInfo = sharingInfo?.[platform];
+  const title =
+    platform === 'windows' ? 'Access in Windows' : platform === 'macos' ? 'Access in macOS' : 'Access in Ubuntu';
+  const primaryUrl =
+    platform === 'linux'
+      ? (sharingInfo?.nautilusUrl ?? platformInfo?.url)
+      : platform === 'windows'
+        ? (sharingInfo?.webdavUrl ?? platformInfo?.url)
+        : (sharingInfo?.webdavUrl ?? platformInfo?.url);
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialog.Content>
         <AlertDialog.Header>
-          <AlertDialog.Title>Connect Native Drive</AlertDialog.Title>
+          <AlertDialog.Title>{title}</AlertDialog.Title>
           <AlertDialog.Description>
-            Use your WebDAV app password to mount the shared workspace in Finder or Windows File Explorer.
+            Mount your workspace over WebDAV in the operating system file browser.
           </AlertDialog.Description>
         </AlertDialog.Header>
         <AlertDialog.Body>
-          <div className="space-y-4 text-sm text-neutral5">
-            <div className="rounded-md border border-border1 bg-surface3 p-3">
-              <div className="mb-2 text-xs uppercase text-neutral3">WebDAV URL</div>
-              <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 truncate text-neutral6">{webdavUrl}</code>
-                <CopyButton content={webdavUrl} copyMessage="Copied WebDAV URL" />
-              </div>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Spinner />
             </div>
-            <div>
-              <div className="mb-1 font-medium text-neutral6">macOS</div>
-              <p>Finder: Go → Connect to Server, then enter the WebDAV URL and your WebDAV app credentials.</p>
+          ) : error ? (
+            <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+              {error.message}
             </div>
-            <div>
-              <div className="mb-1 font-medium text-neutral6">Windows</div>
+          ) : sharingInfo && platformInfo && primaryUrl ? (
+            <div className="space-y-4 text-sm text-neutral5">
+              <p>{platformInfo.instructions}</p>
               <div className="rounded-md border border-border1 bg-surface3 p-3">
+                <div className="mb-2 text-xs uppercase text-neutral3">
+                  {platform === 'linux' ? 'GNOME Files URL' : 'WebDAV URL'}
+                </div>
                 <div className="flex items-center gap-2">
-                  <code className="min-w-0 flex-1 whitespace-pre-wrap text-neutral6">{windowsCommand}</code>
-                  <CopyButton content={windowsCommand} copyMessage="Copied Windows command" />
+                  <code className="min-w-0 flex-1 truncate text-neutral6">{primaryUrl}</code>
+                  <CopyButton content={primaryUrl} copyMessage="Copied connection URL" />
                 </div>
               </div>
+              <div className="rounded-md border border-border1 bg-surface3 p-3">
+                <div className="mb-2 text-xs uppercase text-neutral3">Username</div>
+                <div className="flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate text-neutral6">{sharingInfo.username}</code>
+                  <CopyButton content={sharingInfo.username} copyMessage="Copied username" />
+                </div>
+              </div>
+              <div className="rounded-md border border-border1 bg-surface3 p-3">
+                <div className="mb-2 text-xs uppercase text-neutral3">Password</div>
+                <div className="flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate text-neutral6">{sharingInfo.password}</code>
+                  <CopyButton content={sharingInfo.password} copyMessage="Copied password" />
+                </div>
+              </div>
+              {platform !== 'windows' && (
+                <div className="rounded-md border border-border1 bg-surface3 p-3">
+                  <div className="mb-2 text-xs uppercase text-neutral3">Credential URL</div>
+                  <div className="flex items-center gap-2">
+                    <code className="min-w-0 flex-1 truncate text-neutral6">
+                      {platform === 'linux' ? sharingInfo.nautilusUrl : sharingInfo.httpsUrlWithCredentials}
+                    </code>
+                    <CopyButton
+                      content={platform === 'linux' ? sharingInfo.nautilusUrl : sharingInfo.httpsUrlWithCredentials}
+                      copyMessage="Copied credential URL"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          ) : (
+            <div className="rounded-md border border-border1 bg-surface3 p-3 text-sm text-neutral4">
+              Sharing details are unavailable.
+            </div>
+          )}
         </AlertDialog.Body>
         <AlertDialog.Footer>
           <AlertDialog.Action onClick={() => onOpenChange(false)}>Done</AlertDialog.Action>
