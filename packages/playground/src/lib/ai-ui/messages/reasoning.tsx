@@ -4,7 +4,9 @@ import { BrainIcon, ChevronUpIcon } from 'lucide-react';
 import { useState } from 'react';
 
 export const Reasoning = ({ text }: ReasoningMessagePart) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  // Collapsed by default: reasoning is long and secondary; the badge stays as
+  // the affordance to expand it.
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   return (
     <div className="mb-2 space-y-2">

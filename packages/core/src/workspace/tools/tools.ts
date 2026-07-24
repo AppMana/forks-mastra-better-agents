@@ -23,6 +23,7 @@ import { executeCommandTool, executeCommandWithBackgroundTool } from './execute-
 import { fileStatTool } from './file-stat';
 import { getProcessOutputTool } from './get-process-output';
 import { grepTool } from './grep';
+import { runWithWorkspaceStatusUpdates } from './helpers';
 import { indexContentTool } from './index-content';
 import { killProcessTool } from './kill-process';
 import { listFilesTool } from './list-files';
@@ -226,6 +227,22 @@ function wrapTool(tool: any, workspace: Workspace, targets: ResolveTargets): any
 }
 
 /**
+ * Wrap a tool so its whole execute runs under live workspace-status feedback:
+ * a cold sandbox can spend minutes in claim provisioning and image pull, and
+ * without re-emitted metadata the chat shows nothing while the tool blocks.
+ * Innermost wrapper — it must see the enriched context (workspace injected).
+ */
+function wrapWithStatusFeedback(tool: any, name: WorkspaceToolName): any {
+  return {
+    ...tool,
+    execute: async (input: any, context: any = {}) =>
+      context?.workspace && context?.writer
+        ? runWithWorkspaceStatusUpdates(context, name, () => tool.execute(input, context))
+        : tool.execute(input, context),
+  };
+}
+
+/**
  * Wrap a tool with read-before-write tracking (readTracker).
  *
  * - mode 'read': records the read after execution
@@ -400,6 +417,10 @@ export async function createWorkspaceTools(
     } else {
       wrapped = { ...tool, requireApproval: config.requireApproval };
     }
+
+    // Innermost: live status feedback while the tool body runs (receives the
+    // enriched context from the outer wrappers, so the workspace is present).
+    wrapped = wrapWithStatusFeedback(wrapped, name);
 
     if (opts?.readTrackerMode) {
       wrapped = wrapWithReadTracker(wrapped, workspace, readTracker, config, opts.readTrackerMode);

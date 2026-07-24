@@ -306,7 +306,7 @@ describe('executeCommandTool data chunks', () => {
 
       const result = await execute({ command: 'true', args: [], timeout: null, cwd: null }, context);
 
-      expect(result).toBe('(no output)');
+      expect(result).toBe('(no output; exit code 0)');
     });
 
     it('returns stdout string for successful command', async () => {
@@ -838,5 +838,48 @@ describe('executeCommandTool browser CLI logic', () => {
       expect(executedCommands).toHaveLength(1);
       expect(executedCommands[0]).toContain('open');
     });
+  });
+});
+
+describe('executeCommandTool result formatting', () => {
+  it('includes stderr in a successful result so warnings are never swallowed', async () => {
+    const { context } = createMockContext({
+      executeCommand: async () => ({
+        success: true,
+        exitCode: 0,
+        stdout: 'partial output\n',
+        stderr: 'warn: deprecated flag\n',
+        executionTimeMs: 3,
+      }),
+    });
+
+    const result = await execute({ command: 'x', timeout: null, cwd: null, tail: null }, context);
+    expect(result).toContain('partial output');
+    expect(result).toContain('warn: deprecated flag');
+  });
+
+  it('reports the exit code alongside empty output instead of a bare "(no output)"', async () => {
+    const { context } = createMockContext({
+      executeCommand: async () => ({ success: true, exitCode: 0, stdout: '', stderr: '', executionTimeMs: 2 }),
+    });
+
+    const result = await execute({ command: 'x', timeout: null, cwd: null, tail: null }, context);
+    expect(result).toContain('no output');
+    expect(result.toLowerCase()).toContain('exit code 0');
+  });
+
+  it('surfaces stderr-only success output', async () => {
+    const { context } = createMockContext({
+      executeCommand: async () => ({
+        success: true,
+        exitCode: 0,
+        stdout: '',
+        stderr: 'progress written to stderr\n',
+        executionTimeMs: 2,
+      }),
+    });
+
+    const result = await execute({ command: 'x', timeout: null, cwd: null, tail: null }, context);
+    expect(result).toContain('progress written to stderr');
   });
 });

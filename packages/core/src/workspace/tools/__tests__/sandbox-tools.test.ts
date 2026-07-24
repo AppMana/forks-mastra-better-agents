@@ -130,7 +130,7 @@ describe('execute_command tool', () => {
       });
       const ctx = createContext(sandbox);
       const result = await executeCommandTool.execute({ command: 'true', tail: null }, ctx);
-      expect(result).toBe('(no output)');
+      expect(result).toBe('(no output; exit code 0)');
     });
 
     it('returns stdout + stderr + exit code on failure', async () => {

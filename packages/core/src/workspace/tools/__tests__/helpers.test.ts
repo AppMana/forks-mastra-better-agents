@@ -372,3 +372,73 @@ describe('getEditDiagnosticsText', () => {
     }
   });
 });
+
+describe('runWithWorkspaceStatusUpdates', () => {
+  it('emits initial metadata, re-emits on status change, and resolves the body result', async () => {
+    vi.useFakeTimers();
+    try {
+      const writerCustom = vi.fn();
+      const sandbox = { id: 'sb-2', name: 'cold-sandbox', provider: 'kubernetes', status: 'pending' as string };
+      const workspace = new Workspace({ id: 'ws-cold', name: 'Cold Workspace', sandbox: sandbox as any });
+      const context: ToolExecutionContext = {
+        workspace,
+        writer: { custom: writerCustom } as any,
+        agent: { toolCallId: 'call-1' } as any,
+      };
+
+      let resolveBody!: (value: string) => void;
+      const body = new Promise<string>(resolve => {
+        resolveBody = resolve;
+      });
+
+      const { runWithWorkspaceStatusUpdates } = await import('../helpers');
+      const resultPromise = runWithWorkspaceStatusUpdates(context, 'test_tool', () => body);
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The initial chunk belongs to the tool body's emitWorkspaceMetadata;
+      // the wrapper stays silent until a transition happens.
+      expect(writerCustom).toHaveBeenCalledTimes(0);
+
+      // No change → still no chunk
+      await vi.advanceTimersByTimeAsync(2_100);
+      expect(writerCustom).toHaveBeenCalledTimes(0);
+
+      // Status transition → one new chunk
+      sandbox.status = 'starting';
+      await vi.advanceTimersByTimeAsync(2_100);
+      expect(writerCustom).toHaveBeenCalledTimes(1);
+      expect(writerCustom.mock.calls[0][0].type).toBe('data-workspace-metadata');
+      expect(writerCustom.mock.calls[0][0].data.toolCallId).toBe('call-1');
+
+      // Completion with a final transition → final chunk, result passes through
+      sandbox.status = 'running';
+      resolveBody('done');
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(resultPromise).resolves.toBe('done');
+      expect(writerCustom).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops polling and still returns when the body throws', async () => {
+    vi.useFakeTimers();
+    try {
+      const writerCustom = vi.fn();
+      const workspace = createMockWorkspace({ sandbox: true });
+      const context: ToolExecutionContext = { workspace, writer: { custom: writerCustom } as any };
+
+      const { runWithWorkspaceStatusUpdates } = await import('../helpers');
+      const failing = runWithWorkspaceStatusUpdates(context, 'test_tool', async () => {
+        throw new Error('boom');
+      });
+      await expect(failing).rejects.toThrow('boom');
+
+      const countAfterFailure = writerCustom.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(writerCustom.mock.calls.length).toBe(countAfterFailure);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

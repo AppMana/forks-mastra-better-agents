@@ -249,7 +249,15 @@ async function executeCommand(input: Record<string, any>, context: any) {
       return parts.join('\n');
     }
 
-    return (await truncateOutput(result.stdout, tail, tokenLimit, tokenFrom)) || '(no output)';
+    // Success must still surface stderr and the exit code: pipelines can exit 0
+    // while the interesting failure text went to stderr, and a bare
+    // "(no output)" gives the model nothing to correct against.
+    const stdoutText = await truncateOutput(result.stdout, tail, tokenLimit, tokenFrom);
+    const stderrText = await truncateOutput(result.stderr, tail, tokenLimit, tokenFrom);
+    const successParts = [stdoutText];
+    if (stderrText) successParts.push(`stderr:\n${stderrText}`);
+    const combined = successParts.filter(Boolean).join('\n');
+    return combined || '(no output; exit code 0)';
   } catch (error) {
     await context?.writer?.custom({
       type: 'data-sandbox-exit',

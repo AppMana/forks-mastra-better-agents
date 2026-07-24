@@ -108,13 +108,16 @@ export const FileTreeBadge = ({
   const hasResult = !!treeOutput;
   const toolCalled = toolCalledProp ?? hasResult;
 
-  // Extract filesystem metadata from message data parts (via writer.custom), scoped to this tool call
+  // Extract filesystem metadata from message data parts (via writer.custom),
+  // scoped to this tool call. The server re-emits the chunk on sandbox status
+  // transitions during cold starts, so read the LATEST one.
   const message = useAuiState(s => s.message);
   const workspaceMetadata = useMemo(() => {
     const content = message.content as ReadonlyArray<{ type: string; name?: string; data?: any }>;
-    return content.find(
+    const matches = content.filter(
       part => part.type === 'data' && part.name === 'workspace-metadata' && part.data?.toolCallId === toolCallId,
     );
+    return matches[matches.length - 1];
   }, [message.content, toolCallId]);
 
   const wsMeta = workspaceMetadata?.data as WorkspaceMetadata | undefined;
@@ -206,10 +209,15 @@ export const FileTreeBadge = ({
             </div>
           )}
 
-          {/* Loading state */}
+          {/* Loading state — name the wait: a cold sandbox can spend minutes provisioning. */}
           {toolCalled && !hasResult && (
-            <div className="rounded-md border border-border1 bg-surface2 px-3 py-2">
-              <span className="text-xs text-neutral6">Loading...</span>
+            <div className="rounded-md border border-border1 bg-surface2 px-3 py-2 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
+              <span className="text-xs text-neutral6">
+                {wsMeta?.sandbox?.status && wsMeta.sandbox.status !== 'running'
+                  ? `Workspace ${wsMeta.sandbox.status}…`
+                  : 'Listing files…'}
+              </span>
             </div>
           )}
         </div>

@@ -78,6 +78,71 @@ export async function emitWorkspaceMetadata(context: ToolExecutionContext, toolN
 }
 
 /**
+ * Run a workspace tool body with live status feedback: re-emits workspace
+ * metadata whenever the sandbox/workspace status changes while `fn` is
+ * pending (a cold sandbox can spend minutes in claim provisioning and image
+ * pull), plus a final update on completion. The INITIAL metadata chunk stays
+ * the responsibility of the tool body's own emitWorkspaceMetadata call; this
+ * wrapper only reports transitions. The UI's workspace badges key on these
+ * chunks and render the latest one.
+ */
+export async function runWithWorkspaceStatusUpdates<T>(
+  context: ToolExecutionContext,
+  toolName: string,
+  fn: () => Promise<T>,
+  intervalMs = 2_000,
+): Promise<T> {
+  const workspace = requireWorkspace(context);
+  const toolCallId = context?.agent?.toolCallId;
+
+  const snapshot = async () => {
+    const info = await workspace.getInfo({ requestContext: context?.requestContext, resolveDynamicProviders: false });
+    const status = (info as { sandbox?: { status?: string } }).sandbox?.status ?? (info as { status?: string }).status;
+    return { info, status };
+  };
+
+  const emit = (info: object) =>
+    context?.writer?.custom({ type: 'data-workspace-metadata', data: { toolName, toolCallId, ...info } });
+
+  const initial = await snapshot();
+  let lastStatus = initial.status;
+
+  let checking = false;
+  const timer = setInterval(() => {
+    if (checking) return;
+    checking = true;
+    void (async () => {
+      try {
+        const current = await snapshot();
+        if (current.status !== lastStatus) {
+          lastStatus = current.status;
+          await emit(current.info);
+        }
+      } catch {
+        // Status polling must never break the tool call.
+      } finally {
+        checking = false;
+      }
+    })();
+  }, intervalMs);
+  (timer as { unref?: () => void }).unref?.();
+
+  try {
+    return await fn();
+  } finally {
+    clearInterval(timer);
+    try {
+      const final = await snapshot();
+      if (final.status !== lastStatus) {
+        await emit(final.info);
+      }
+    } catch {
+      // Best-effort final update only.
+    }
+  }
+}
+
+/**
  * Get LSP diagnostics text to append to edit tool results.
  * Non-blocking — returns empty string on any failure.
  *

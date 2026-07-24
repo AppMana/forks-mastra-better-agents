@@ -188,10 +188,12 @@ export const SandboxExecutionBadge = ({
       (chunk.name === 'sandbox-stdout' || chunk.name === 'sandbox-stderr') && chunk.data?.toolCallId === toolCallId,
   );
 
-  // Workspace metadata emitted first — scoped to this tool call
-  const workspaceMetaPart = dataParts.find(
+  // Workspace metadata — the server re-emits it whenever the sandbox status
+  // changes (cold starts spend minutes provisioning), so read the LATEST chunk.
+  const workspaceMetaParts = dataParts.filter(
     chunk => chunk.name === 'workspace-metadata' && chunk.data?.toolCallId === toolCallId,
   );
+  const workspaceMetaPart = workspaceMetaParts[workspaceMetaParts.length - 1];
   const execMeta = workspaceMetaPart?.data as WorkspaceMetadata | undefined;
 
   // Exit chunk scoped to this tool call
@@ -266,7 +268,12 @@ export const SandboxExecutionBadge = ({
             <>
               <span className="flex items-center gap-1.5 text-xs text-accent6">
                 <span className="w-1.5 h-1.5 bg-accent6 rounded-full animate-pulse" />
-                <span className="animate-pulse">running</span>
+                {/* Before the sandbox reaches 'running', the wait is provisioning, not execution. */}
+                <span className="animate-pulse">
+                  {execMeta?.sandbox?.status && execMeta.sandbox.status !== 'running'
+                    ? `sandbox ${execMeta.sandbox.status}…`
+                    : 'running'}
+                </span>
               </span>
               <span className="text-neutral6 text-xs tabular-nums">{elapsedTime}ms</span>
             </>
