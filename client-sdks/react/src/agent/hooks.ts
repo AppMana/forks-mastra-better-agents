@@ -273,13 +273,38 @@ export const useChat = ({
   const baseClient = useMastraClient();
   const [isRunning, setIsRunning] = useState(false);
 
+  const _isRunningRef = useRef(false);
+  const _messagesCountRef = useRef(0);
+  const _lastSyncedThreadRef = useRef(threadId);
+
   useEffect(() => {
+    _isRunningRef.current = isRunning;
+  }, [isRunning]);
+
+  useEffect(() => {
+    _messagesCountRef.current = messages.length;
+  }, [messages]);
+
+  useEffect(() => {
+    const threadChanged = _lastSyncedThreadRef.current !== threadId;
+    _lastSyncedThreadRef.current = threadId;
     const formattedMessages = resolveInitialMessages(initialMessages ?? []);
+
+    if (!threadChanged) {
+      // Never clobber an active run: mid-stream refetches (e.g. the thread
+      // pre-create on FIRST send) deliver snapshots that lag the optimistic
+      // local state and were wiping the user's just-sent message.
+      if (_isRunningRef.current) return;
+      // An empty server snapshot never beats existing local messages —
+      // persistence is deferred, so "empty" usually means "not saved yet".
+      if (formattedMessages.length === 0 && _messagesCountRef.current > 0) return;
+    }
+
     setMessages(formattedMessages);
     pendingToolApprovalIdsRef.current = extractPendingToolApprovalIdsFromMessages(formattedMessages);
     setIsAwaitingToolApproval(pendingToolApprovalIdsRef.current.size > 0);
     _currentRunId.current = extractRunIdFromMessages(formattedMessages);
-  }, [initialMessages]);
+  }, [initialMessages, threadId]);
 
   useEffect(() => {
     _requestContext.current = propsRequestContext;
