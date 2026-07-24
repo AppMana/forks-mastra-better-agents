@@ -328,6 +328,134 @@ describe('Workspace Resource', () => {
     });
   });
 
+  describe('operation()', () => {
+    it('should copy a path server-side', async () => {
+      const mockResponse = {
+        success: true,
+        operation: 'copy',
+        sourcePath: '/source.txt',
+        destinationPath: '/copy.txt',
+      };
+      mockFetchResponse(mockResponse);
+
+      const result = await workspace.operation({
+        operation: 'copy',
+        sourcePath: '/source.txt',
+        destinationPath: '/copy.txt',
+      });
+
+      expect(result).toEqual(mockResponse);
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${clientOptions.baseUrl}/api/workspaces/${WORKSPACE_ID}/fs/operation`,
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining(clientOptions.headers),
+          body: JSON.stringify({
+            operation: 'copy',
+            sourcePath: '/source.txt',
+            destinationPath: '/copy.txt',
+          }),
+        }),
+      );
+    });
+
+    it('should move a path server-side', async () => {
+      const mockResponse = {
+        success: true,
+        operation: 'move',
+        sourcePath: '/old-dir',
+        destinationPath: '/new-dir',
+      };
+      mockFetchResponse(mockResponse);
+
+      const result = await workspace.operation({
+        operation: 'move',
+        sourcePath: '/old-dir',
+        destinationPath: '/new-dir',
+        recursive: true,
+      });
+
+      expect(result).toEqual(mockResponse);
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${clientOptions.baseUrl}/api/workspaces/${WORKSPACE_ID}/fs/operation`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            operation: 'move',
+            sourcePath: '/old-dir',
+            destinationPath: '/new-dir',
+            recursive: true,
+          }),
+        }),
+      );
+    });
+
+    it('should rename a path with overwrite and recursive options', async () => {
+      const mockResponse = {
+        success: true,
+        operation: 'rename',
+        sourcePath: '/old.txt',
+        destinationPath: '/new.txt',
+      };
+      mockFetchResponse(mockResponse);
+
+      const result = await workspace.operation({
+        operation: 'rename',
+        sourcePath: '/old.txt',
+        destinationPath: '/new.txt',
+        overwrite: true,
+        recursive: false,
+      });
+
+      expect(result).toEqual(mockResponse);
+      expect(result.operation).toBe('rename');
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${clientOptions.baseUrl}/api/workspaces/${WORKSPACE_ID}/fs/operation`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            operation: 'rename',
+            sourcePath: '/old.txt',
+            destinationPath: '/new.txt',
+            overwrite: true,
+            recursive: false,
+          }),
+        }),
+      );
+    });
+
+    it('should duplicate a path server-side', async () => {
+      const mockResponse = {
+        success: true,
+        operation: 'duplicate',
+        sourcePath: '/report.csv',
+        destinationPath: '/report copy.csv',
+      };
+      mockFetchResponse(mockResponse);
+
+      const result = await workspace.operation({
+        operation: 'duplicate',
+        sourcePath: '/report.csv',
+        destinationPath: '/report copy.csv',
+        overwrite: false,
+      });
+
+      expect(result).toEqual(mockResponse);
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${clientOptions.baseUrl}/api/workspaces/${WORKSPACE_ID}/fs/operation`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            operation: 'duplicate',
+            sourcePath: '/report.csv',
+            destinationPath: '/report copy.csv',
+            overwrite: false,
+          }),
+        }),
+      );
+    });
+  });
+
   // ===========================================================================
   // Search Operations
   // ===========================================================================
