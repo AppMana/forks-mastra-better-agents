@@ -8,6 +8,7 @@ import {
   formatWorkspaceUploadLabel,
   sanitizeWorkspaceUploadFileName,
   selectWorkspaceForUpload,
+  workspaceUploadNoticeRoot,
   startWorkspaceUploadProgress,
   workspaceUploadPercent,
 } from '../workspace-upload';
@@ -55,17 +56,31 @@ describe('workspace upload helpers', () => {
     );
   });
 
-  it('prefers the writable workspace attached to the current agent', () => {
+  it('prefers the durable mastra workspace over ephemeral agent sandboxes', () => {
+    const selected = selectWorkspaceForUpload(
+      [workspace({ id: 'agent', agentId: 'agent-1', source: 'agent' }), workspace({ id: 'global', source: 'mastra' })],
+      'agent-1',
+    );
+
+    expect(selected?.id).toBe('global');
+  });
+
+  it('falls back to the agent workspace when no durable workspace is writable', () => {
     const selected = selectWorkspaceForUpload(
       [
-        workspace({ id: 'global' }),
-        workspace({ id: 'read-only-agent', agentId: 'agent-1', safety: { readOnly: true } }),
-        workspace({ id: 'agent', agentId: 'agent-1' }),
+        workspace({ id: 'global', source: 'mastra', safety: { readOnly: true } }),
+        workspace({ id: 'read-only-agent', agentId: 'agent-1', source: 'agent', safety: { readOnly: true } }),
+        workspace({ id: 'agent', agentId: 'agent-1', source: 'agent' }),
       ],
       'agent-1',
     );
 
     expect(selected?.id).toBe('agent');
+  });
+
+  it('roots the notice at the sandbox mount point of the chosen workspace', () => {
+    expect(workspaceUploadNoticeRoot(workspace({ source: 'mastra' }))).toBe('/workspace/shared');
+    expect(workspaceUploadNoticeRoot(workspace({ source: 'agent' }))).toBe('/workspace');
   });
 });
 

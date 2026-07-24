@@ -87,10 +87,26 @@ export async function fileToBase64(file: File): Promise<string> {
   return btoa(chunks.join(''));
 }
 
+/**
+ * Uploads go to DURABLE storage: config-owned ('mastra') workspaces outlive
+ * chats, while per-agent sandbox workspaces are deleted with their claim
+ * lease — an upload there silently disappears when the sandbox expires. The
+ * shared workspace is mounted into every sandbox at /workspace/shared, so
+ * agents still see the files.
+ */
 export function selectWorkspaceForUpload(workspaces: WorkspaceItem[], agentId?: string): WorkspaceItem | undefined {
   const writableWorkspaces = workspaces.filter(
     workspace => workspace.capabilities.hasFilesystem && !workspace.safety.readOnly,
   );
 
-  return writableWorkspaces.find(workspace => workspace.agentId === agentId) ?? writableWorkspaces[0];
+  return (
+    writableWorkspaces.find(workspace => workspace.source === 'mastra') ??
+    writableWorkspaces.find(workspace => workspace.agentId === agentId) ??
+    writableWorkspaces[0]
+  );
+}
+
+/** Where a sandboxed agent sees a durable ('mastra') workspace's files. */
+export function workspaceUploadNoticeRoot(workspace: Pick<WorkspaceItem, 'source'>): string {
+  return workspace.source === 'mastra' ? '/workspace/shared' : WORKSPACE_SANDBOX_ROOT;
 }

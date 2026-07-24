@@ -26,6 +26,7 @@ import {
   completeWorkspaceUploadFile,
   selectWorkspaceForUpload,
   startWorkspaceUploadProgress,
+  workspaceUploadNoticeRoot,
 } from '@/domains/workspace/workspace-upload';
 import type { WorkspaceUploadProgress } from '@/domains/workspace/workspace-upload';
 import { Link } from '@/lib/link';
@@ -341,7 +342,7 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
       }
 
       const currentText = (composerRuntime.getState() as { text?: string }).text ?? '';
-      const notice = buildWorkspaceUploadNotice(uploadedPaths);
+      const notice = buildWorkspaceUploadNotice(uploadedPaths, workspaceUploadNoticeRoot(selectedWorkspace));
       composerRuntime.setText([currentText.trim(), notice].filter(Boolean).join('\n\n'));
       toast.success(`Uploaded ${uploadedPaths.length} workspace file${uploadedPaths.length === 1 ? '' : 's'}`);
     } catch (error) {
