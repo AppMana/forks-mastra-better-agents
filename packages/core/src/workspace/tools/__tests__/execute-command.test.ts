@@ -971,3 +971,15 @@ describe('executeCommandTool output caching (Claude-style)', () => {
     expect(result).not.toContain('Full output saved');
   });
 });
+
+describe('script-file guidance', () => {
+  it('tells the agent to write scripts to files rather than inlining heredocs', () => {
+    const description = executeCommandTool.description ?? '';
+    expect(description).toMatch(/WRITE IT TO A FILE FIRST/);
+    expect(description).toMatch(/heredoc/i);
+  });
+
+  it('documents where truncated output is persisted', () => {
+    expect(executeCommandTool.description ?? '').toMatch(/tool_outputs/);
+  });
+});

@@ -328,7 +328,9 @@ Usage:
 - Commands run in a shell, so pipes, redirects, and chaining (&&, ||, ;) all work.
 - Always quote file paths that contain spaces (e.g., cd "/path/with spaces").
 - Use the timeout parameter (in seconds) to limit execution time. Behavior when omitted depends on the sandbox provider.
-- Optionally use cwd to override the working directory. Commands run from the sandbox default if omitted.`;
+- Optionally use cwd to override the working directory. Commands run from the sandbox default if omitted.
+- To run a script, WRITE IT TO A FILE FIRST (write_file) and then execute the file — e.g. write \`analyze.py\`, then run \`python analyze.py\`. Do NOT inline scripts as heredocs (\`python <<EOF ... EOF\`) or long \`-c\` strings: heredocs corrupt on quoting and control characters, cost far more tokens to emit, and cannot be re-run, edited, or debugged after they fail. A file on disk can be fixed line by line and re-executed cheaply.
+- Output that gets truncated is saved in full to a file under tool_outputs/ in the working directory; read or grep that file instead of re-running the command.`;
 
 /** Foreground-only tool (no background param in schema). */
 export const executeCommandTool = createTool({
