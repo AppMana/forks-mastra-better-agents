@@ -14,11 +14,15 @@ export function buildWorkspaceUploadPath(fileName: string, directory = WORKSPACE
   return safeDirectory ? `${safeDirectory}/${safeFileName}` : safeFileName;
 }
 
-export function buildWorkspaceUploadNotice(paths: string[]): string {
+/** Where the sandbox mounts the workspace volume — the provider's workingDir default. */
+export const WORKSPACE_SANDBOX_ROOT = '/workspace';
+
+export function buildWorkspaceUploadNotice(paths: string[], root: string = WORKSPACE_SANDBOX_ROOT): string {
   if (paths.length === 0) return '';
 
+  const prefix = root.replace(/\/+$/, '');
   const label = paths.length === 1 ? 'workspace file' : 'workspace files';
-  return `Uploaded ${label}:\n${paths.map(path => `- /${path.replace(/^\/+/, '')}`).join('\n')}`;
+  return `Uploaded ${label}:\n${paths.map(path => `- ${prefix}/${path.replace(/^\/+/, '')}`).join('\n')}`;
 }
 
 export interface WorkspaceUploadProgress {

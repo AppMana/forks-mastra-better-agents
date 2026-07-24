@@ -43,9 +43,15 @@ describe('workspace upload helpers', () => {
     expect(buildWorkspaceUploadPath('report.csv', '/incoming/')).toBe('incoming/report.csv');
   });
 
-  it('builds a composer notice with normalized absolute paths', () => {
+  it('builds a composer notice with absolute sandbox paths under the workspace root', () => {
     expect(buildWorkspaceUploadNotice(['uploads/a.csv', '/uploads/b.csv'])).toBe(
-      'Uploaded workspace files:\n- /uploads/a.csv\n- /uploads/b.csv',
+      'Uploaded workspace files:\n- /workspace/uploads/a.csv\n- /workspace/uploads/b.csv',
+    );
+  });
+
+  it('builds a composer notice against a custom workspace root', () => {
+    expect(buildWorkspaceUploadNotice(['uploads/a.csv'], '/mnt/data/')).toBe(
+      'Uploaded workspace file:\n- /mnt/data/uploads/a.csv',
     );
   });
 
