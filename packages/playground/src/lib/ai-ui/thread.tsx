@@ -396,39 +396,48 @@ const ComposerSendButton = ({ canExecute = true }: ComposerActionProps) => {
     );
   }
 
-  return (
-    <>
-      {isStreaming ? (
-        <Button
-          variant="default"
-          size="icon-md"
-          type="button"
-          tooltip={canExecute ? 'Send' : 'No permission to execute'}
-          className="rounded-full border border-border1 bg-surface5"
-          disabled={!canExecute || isComposerEmpty}
-          onClick={() => composerRuntime.send()}
-        >
-          <ArrowUp className="h-6 w-6 text-neutral3 hover:text-neutral6" />
-        </Button>
-      ) : (
-        <ComposerPrimitive.Send asChild disabled={!canExecute}>
-          <Button
-            variant="default"
-            size="icon-md"
-            tooltip={canExecute ? 'Send' : 'No permission to execute'}
-            className="rounded-full border border-border1 bg-surface5"
-            disabled={!canExecute}
-          >
-            <ArrowUp className="h-5 w-5 text-neutral3 hover:text-neutral6" />
-          </Button>
-        </ComposerPrimitive.Send>
-      )}
-      {isStreaming && (
-        <Button variant="default" size="icon-md" tooltip="Cancel" onClick={() => void cancelStream()}>
-          <CircleStopIcon />
-        </Button>
-      )}
-    </>
+  // The send button MORPHS into Stop while a run streams; typing a follow-up
+  // (signals allow mid-stream sends) brings Send back. Stop is the only way
+  // to end a run.
+  if (isStreaming && isComposerEmpty) {
+    return (
+      <Button
+        variant="default"
+        size="icon-md"
+        type="button"
+        tooltip="Stop"
+        className="rounded-full border border-border1 bg-surface5"
+        onClick={() => void cancelStream()}
+      >
+        <CircleStopIcon className="h-5 w-5" />
+      </Button>
+    );
+  }
+
+  return isStreaming ? (
+    <Button
+      variant="default"
+      size="icon-md"
+      type="button"
+      tooltip={canExecute ? 'Send' : 'No permission to execute'}
+      className="rounded-full border border-border1 bg-surface5"
+      disabled={!canExecute || isComposerEmpty}
+      onClick={() => composerRuntime.send()}
+    >
+      <ArrowUp className="h-6 w-6 text-neutral3 hover:text-neutral6" />
+    </Button>
+  ) : (
+    <ComposerPrimitive.Send asChild disabled={!canExecute}>
+      <Button
+        variant="default"
+        size="icon-md"
+        tooltip={canExecute ? 'Send' : 'No permission to execute'}
+        className="rounded-full border border-border1 bg-surface5"
+        disabled={!canExecute}
+      >
+        <ArrowUp className="h-5 w-5 text-neutral3 hover:text-neutral6" />
+      </Button>
+    </ComposerPrimitive.Send>
   );
 };
 

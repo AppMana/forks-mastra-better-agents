@@ -20,9 +20,10 @@ import { FileText, Wand2, Search, ChevronDown, Bot, Server } from 'lucide-react'
 import { useState, useCallback, useRef } from 'react';
 import { useSearchParams, useParams, useNavigate } from 'react-router';
 import { isWorkspaceNotSupportedError } from '@/domains/workspace/compatibility';
-import { AddSkillDialog, FileBrowser, FileViewer, SkillsTable } from '@/domains/workspace/components';
+import { AddSkillDialog, FileBrowser, SkillsTable } from '@/domains/workspace/components';
 import { NoWorkspacesInfo } from '@/domains/workspace/components/no-workspaces-info';
 import { SearchWorkspacePanel, SearchSkillsPanel } from '@/domains/workspace/components/search-panel';
+import { WorkspaceFilePreview } from '@/domains/workspace/components/workspace-file-preview';
 import { WorkspaceNotConfigured } from '@/domains/workspace/components/workspace-not-configured';
 import { WorkspaceNotSupported } from '@/domains/workspace/components/workspace-not-supported';
 import { useInstallSkill, useUpdateSkills, useRemoveSkill } from '@/domains/workspace/hooks';
@@ -33,7 +34,6 @@ import {
   useSearchWorkspace,
   useDeleteWorkspaceFile,
   useCreateWorkspaceDirectory,
-  useWorkspaceFile,
   useWriteWorkspaceFileFromFile,
   useWorkspaceFileOperation,
   useWorkspaceSharing,
@@ -161,10 +161,6 @@ export default function Workspace() {
   const fileOperation = useWorkspaceFileOperation();
 
   // Selected file content - pass workspaceId
-  const { data: fileContent, isLoading: isLoadingFileContent } = useWorkspaceFile(selectedFile ?? '', {
-    enabled: !!selectedFile,
-    workspaceId: effectiveWorkspaceId,
-  });
 
   // Skills - pass workspaceId to get skills from the selected workspace
   const {
@@ -705,11 +701,9 @@ export default function Workspace() {
                     }}
                   />
                   {selectedFile && (
-                    <FileViewer
+                    <WorkspaceFilePreview
                       path={selectedFile}
-                      content={fileContent?.content ?? ''}
-                      isLoading={isLoadingFileContent}
-                      mimeType={fileContent?.mimeType}
+                      workspaceId={effectiveWorkspaceId}
                       onClose={() => setSelectedFile(null)}
                     />
                   )}
