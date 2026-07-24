@@ -472,11 +472,29 @@ describe('accumulateChunk - text streaming', () => {
     expect(textPart.textId).toBe('t1');
   });
 
-  it('text-end is a no-op (final state set by finish)', () => {
+  it('text-end finalizes the streaming text part', () => {
     const out = reduce([startChunk(), textStartChunk('t1'), textDeltaChunk('t1', 'hi'), textEndChunk('t1')]);
     const textPart = out[0].content.parts.find(p => p.type === 'text') as MastraTextPart;
     expect(textPart.text).toBe('hi');
-    expect(textPart.state).toBe('streaming');
+    expect(textPart.state).toBe('done');
+  });
+
+  it('keeps multi-step text in order: a later step opens a NEW part after tools', () => {
+    // Regression: with text-end as a no-op, step 1's part stayed 'streaming'
+    // and step 2's deltas (different textId) fell back to it, merging the
+    // final reply into the middle of the transcript.
+    const out = reduce([
+      startChunk(),
+      textStartChunk('t1'),
+      textDeltaChunk('t1', 'step one'),
+      textEndChunk('t1'),
+      textDeltaChunk('t2', 'step two'),
+    ]);
+    const textParts = out[0].content.parts.filter(p => p.type === 'text') as MastraTextPart[];
+    expect(textParts).toHaveLength(2);
+    expect(textParts[0].text).toBe('step one');
+    expect(textParts[0].state).toBe('done');
+    expect(textParts[1].text).toBe('step two');
   });
 
   it('text-delta without prior assistant creates one', () => {

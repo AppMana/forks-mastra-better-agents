@@ -1,6 +1,6 @@
 import { v4 as uuid } from '@lukeed/uuid';
 import { PermissionDenied, SessionExpired, is401UnauthorizedError, is403ForbiddenError } from '@mastra/playground-ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { AgentSidebar } from '@/domains/agents/agent-sidebar';
 import { AgentChat } from '@/domains/agents/components/agent-chat';
@@ -137,18 +137,29 @@ function Agent() {
 
   const actualThreadId = isNewThread ? newThreadId : threadId;
 
+  // Latest mounted thread. Completion callbacks from ALREADY-BACKGROUNDED runs
+  // are stale closures — comparing against this ref is the only reliable way
+  // to tell "the thread the user is looking at right now" from "a thread that
+  // just finished somewhere else". A finished background thread must NEVER
+  // navigate: it yanks the user out of a new conversation they are composing
+  // and hides the messages they just sent there.
+  const activeThreadRef = useRef<string | undefined>(undefined);
+  activeThreadRef.current = actualThreadId;
+
   const handleRefreshThreadList = useCallback(async () => {
     if (!actualThreadId) return;
 
     await refreshThreads();
 
+    const isCurrentInstance = activeThreadRef.current === actualThreadId;
     const activePath = window.location.pathname;
     const currentThreadPath = `/agents/${agentId}/chat/${actualThreadId}`;
 
     if (isNewThread) {
-      if (activePath === `/agents/${agentId}/chat/new`) {
+      if (isCurrentInstance && activePath === `/agents/${agentId}/chat/new`) {
+        // Send-time URL binding for the conversation the user is actively in.
         void navigate(currentThreadPath);
-      } else if (agentId) {
+      } else if (agentId && activePath !== currentThreadPath) {
         const ids = readUnreadThreadIds(agentId);
         ids.add(actualThreadId);
         writeUnreadThreadIds(agentId, ids);

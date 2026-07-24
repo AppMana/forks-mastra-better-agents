@@ -1,6 +1,6 @@
 import { v4 as uuid } from '@lukeed/uuid';
 import { MainContentLayout } from '@mastra/playground-ui';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { SessionHeader } from '@/components/session-header';
 import { AgentChat } from '@/domains/agents/components/agent-chat';
@@ -28,6 +28,13 @@ function AgentSession() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- threadId is intentional: we need a new UUID per thread
   const newThreadId = useMemo(() => uuid(), [threadId]);
+
+  const actualThreadId = isNewThread ? newThreadId : (threadId ?? newThreadId);
+
+  // Only the currently-mounted thread may navigate; stale completion
+  // callbacks from backgrounded runs must not steal focus (see chat page).
+  const activeThreadRef = useRef<string | undefined>(undefined);
+  activeThreadRef.current = actualThreadId;
 
   const hasMemory = Boolean(memory?.result);
 
@@ -84,12 +91,10 @@ function AgentSession() {
     return <div className="text-center py-4">Agent not found</div>;
   }
 
-  const actualThreadId = isNewThread ? newThreadId : (threadId ?? newThreadId);
-
   const handleRefreshThreadList = async () => {
     await refreshThreads();
 
-    if (isNewThread) {
+    if (isNewThread && activeThreadRef.current === newThreadId) {
       void navigate(`/agents/${agentId}/session/${newThreadId}`);
     }
   };

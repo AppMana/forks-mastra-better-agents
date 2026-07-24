@@ -12001,6 +12001,7 @@ export interface PostMemorySaveMessages_RouteContract {
 // ============================================================================
 export type PostMemoryThreads_QueryParams = {
   agentId: string;
+  resourceId?: string | undefined;
 };
 
 export type PostMemoryThreads_Body = {
@@ -19765,6 +19766,55 @@ export interface PostWorkspacesWorkspaceIdFsMkdir_RouteContract {
   body: PostWorkspacesWorkspaceIdFsMkdir_Body;
   request: PostWorkspacesWorkspaceIdFsMkdir_Request;
   response: PostWorkspacesWorkspaceIdFsMkdir_Response;
+  responseType: 'json';
+}
+
+// ============================================================================
+// Route: POST /workspaces/:workspaceId/fs/operation
+// ============================================================================
+export type PostWorkspacesWorkspaceIdFsOperation_PathParams = {
+  /** Workspace ID */
+  workspaceId: string;
+};
+
+export type PostWorkspacesWorkspaceIdFsOperation_Body = {
+  /** Filesystem operation to perform */
+  operation: 'copy' | 'move' | 'duplicate' | 'rename';
+  /** Source file or directory path */
+  sourcePath: string;
+  /** Destination file or directory path */
+  destinationPath: string;
+  /** Overwrite existing destination */
+  overwrite?: boolean | undefined;
+  /** Copy/move directories recursively */
+  recursive?: boolean | undefined;
+};
+
+export type PostWorkspacesWorkspaceIdFsOperation_Response = {
+  success: boolean;
+  operation: 'copy' | 'move' | 'duplicate' | 'rename';
+  sourcePath: string;
+  destinationPath: string;
+};
+
+export type PostWorkspacesWorkspaceIdFsOperation_Request = Simplify<
+  (PostWorkspacesWorkspaceIdFsOperation_PathParams extends never
+    ? {}
+    : { params: PostWorkspacesWorkspaceIdFsOperation_PathParams }) &
+    (never extends never ? {} : {} extends never ? { query?: never } : { query: never }) &
+    (PostWorkspacesWorkspaceIdFsOperation_Body extends never
+      ? {}
+      : {} extends PostWorkspacesWorkspaceIdFsOperation_Body
+        ? { body?: PostWorkspacesWorkspaceIdFsOperation_Body }
+        : { body: PostWorkspacesWorkspaceIdFsOperation_Body })
+>;
+
+export interface PostWorkspacesWorkspaceIdFsOperation_RouteContract {
+  pathParams: PostWorkspacesWorkspaceIdFsOperation_PathParams;
+  queryParams: never;
+  body: PostWorkspacesWorkspaceIdFsOperation_Body;
+  request: PostWorkspacesWorkspaceIdFsOperation_Request;
+  response: PostWorkspacesWorkspaceIdFsOperation_Response;
   responseType: 'json';
 }
 
@@ -85123,6 +85173,7 @@ export interface RouteTypes {
   'GET /workspaces/:workspaceId/fs/list': GetWorkspacesWorkspaceIdFsList_RouteContract;
   'DELETE /workspaces/:workspaceId/fs/delete': DeleteWorkspacesWorkspaceIdFsDelete_RouteContract;
   'POST /workspaces/:workspaceId/fs/mkdir': PostWorkspacesWorkspaceIdFsMkdir_RouteContract;
+  'POST /workspaces/:workspaceId/fs/operation': PostWorkspacesWorkspaceIdFsOperation_RouteContract;
   'GET /workspaces/:workspaceId/fs/stat': GetWorkspacesWorkspaceIdFsStat_RouteContract;
   'GET /workspaces/:workspaceId/search': GetWorkspacesWorkspaceIdSearch_RouteContract;
   'POST /workspaces/:workspaceId/index': PostWorkspacesWorkspaceIdIndex_RouteContract;
@@ -86203,6 +86254,9 @@ export interface Client {
   };
   '/workspaces/:workspaceId/fs/mkdir': {
     POST: PostWorkspacesWorkspaceIdFsMkdir_RouteContract;
+  };
+  '/workspaces/:workspaceId/fs/operation': {
+    POST: PostWorkspacesWorkspaceIdFsOperation_RouteContract;
   };
   '/workspaces/:workspaceId/fs/read': {
     GET: GetWorkspacesWorkspaceIdFsRead_RouteContract;

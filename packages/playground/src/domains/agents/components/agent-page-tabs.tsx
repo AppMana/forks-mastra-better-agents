@@ -1,5 +1,5 @@
 import { Tab, TabList, Tabs, Tooltip, TooltipContent, TooltipTrigger, Txt, Icon } from '@mastra/playground-ui';
-import { ExternalLink, EyeIcon, FlaskConical, MessageSquare, ClipboardCheck, GitBranch, Radio } from 'lucide-react';
+import { ExternalLink, FlaskConical, MessageSquare, ClipboardCheck, GitBranch, Radio } from 'lucide-react';
 
 import { useLinkComponent } from '@/lib/framework';
 
@@ -141,13 +141,6 @@ export function AgentPageTabs({
             icon={<ClipboardCheck />}
             label="Review"
             badge={reviewBadge}
-            disabled={!showObservability}
-            disabledReason={observabilityDisabledReason}
-          />
-          <AgentTab
-            value="traces"
-            icon={<EyeIcon />}
-            label="Traces"
             disabled={!showObservability}
             disabledReason={observabilityDisabledReason}
           />

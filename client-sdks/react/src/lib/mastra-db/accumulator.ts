@@ -604,10 +604,23 @@ export const accumulateChunk = ({ chunk, conversation, metadata }: AccumulateChu
     }
 
     case 'text-end': {
-      // Lifecycle marker only. Streaming text parts stay in `state: 'streaming'`
-      // and are finalized by `finish` / `abort` via `finishStreamingAssistantMessage`.
-      // Returned as-is so the chunk-to-DB mapping stays total.
-      return result;
+      // Finalize the matching text part NOW, mirroring reasoning-end. Leaving
+      // it 'streaming' until finish breaks multi-step messages: a later step's
+      // deltas (different textId) fall back to the last streaming text part
+      // and merge the final reply into the middle of the transcript.
+      const lastMessage = result[result.length - 1];
+      if (!lastMessage || lastMessage.role !== 'assistant') return result;
+
+      const parts = [...lastMessage.content.parts];
+      const endedId = chunk.payload.id;
+      let textIndex = endedId ? parts.findLastIndex(part => part.type === 'text' && partTextId(part) === endedId) : -1;
+      if (textIndex === -1) {
+        textIndex = parts.findLastIndex(part => part.type === 'text' && partState(part) === 'streaming');
+      }
+      if (textIndex === -1) return result;
+
+      parts[textIndex] = { ...(parts[textIndex] as MastraTextPart), state: 'done' } as MastraMessagePart;
+      return replaceLast(result, withParts(lastMessage, parts));
     }
 
     case 'reasoning-start': {

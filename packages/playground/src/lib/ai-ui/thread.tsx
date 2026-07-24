@@ -1,8 +1,8 @@
 import type { MessagePrimitive } from '@assistant-ui/react';
 import { ComposerPrimitive, ThreadPrimitive, useComposer, useComposerRuntime } from '@assistant-ui/react';
-import { Avatar, Button, ButtonsGroup, cn, toast, useAutoscroll } from '@mastra/playground-ui';
+import { Avatar, Button, ButtonsGroup, cn, useAutoscroll } from '@mastra/playground-ui';
 import { ArrowUp, EyeIcon, Mic, PlusIcon, Upload } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AttachFileDialog } from './attachments/attach-file-dialog';
 import { ComposerAttachments } from './attachments/attachment';
 import { BracketOverlay } from './components/bracket-overlay';
@@ -18,17 +18,9 @@ import { PrefillIndicator } from '@/domains/agents/components/prefill-indicator'
 import { usePermissions } from '@/domains/auth/hooks/use-permissions';
 import { useThreadInput } from '@/domains/conversation';
 import { useSpeechRecognition } from '@/domains/voice/hooks/use-speech-recognition';
+import { WorkspaceDropzone } from '@/domains/workspace/components/workspace-dropzone';
 import { WorkspaceUploadProgressBar } from '@/domains/workspace/components/workspace-upload-progress';
-import { useWorkspaces, useWriteWorkspaceFileFromFile } from '@/domains/workspace/hooks';
-import {
-  buildWorkspaceUploadNotice,
-  buildWorkspaceUploadPath,
-  completeWorkspaceUploadFile,
-  selectWorkspaceForUpload,
-  startWorkspaceUploadProgress,
-  workspaceUploadNoticeRoot,
-} from '@/domains/workspace/workspace-upload';
-import type { WorkspaceUploadProgress } from '@/domains/workspace/workspace-upload';
+import { useWorkspaceUpload } from '@/domains/workspace/hooks/use-workspace-upload';
 import { Link } from '@/lib/link';
 // import { useBackgroundTaskStream } from '@/hooks';
 
@@ -309,51 +301,18 @@ interface ComposerActionRowProps extends ComposerActionProps {
 
 const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwitcher }: ComposerActionRowProps) => {
   const [isAddAttachmentDialogOpen, setIsAddAttachmentDialogOpen] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<WorkspaceUploadProgress | null>(null);
   const workspaceUploadInputRef = useRef<HTMLInputElement>(null);
-  const composerRuntime = useComposerRuntime();
-  const { data: workspacesData } = useWorkspaces();
-  const writeWorkspaceFile = useWriteWorkspaceFileFromFile();
-  const selectedWorkspace = useMemo(
-    () => selectWorkspaceForUpload(workspacesData?.workspaces ?? [], agentId),
-    [agentId, workspacesData?.workspaces],
-  );
-
-  const handleWorkspaceUpload = async (files: FileList | null) => {
-    if (!selectedWorkspace || !files || files.length === 0) return;
-
-    const fileArray = Array.from(files);
-    const uploadedPaths: string[] = [];
-    let progress = startWorkspaceUploadProgress(fileArray);
-    setUploadProgress(progress);
-
-    try {
-      for (const [index, file] of fileArray.entries()) {
-        const path = buildWorkspaceUploadPath(file.name);
-        await writeWorkspaceFile.mutateAsync({
-          workspaceId: selectedWorkspace.id,
-          path,
-          file,
-          recursive: true,
-        });
-        uploadedPaths.push(path);
-        progress = completeWorkspaceUploadFile(progress, file, fileArray[index + 1]?.name ?? null);
-        setUploadProgress(progress);
-      }
-
-      const currentText = (composerRuntime.getState() as { text?: string }).text ?? '';
-      const notice = buildWorkspaceUploadNotice(uploadedPaths, workspaceUploadNoticeRoot(selectedWorkspace));
-      composerRuntime.setText([currentText.trim(), notice].filter(Boolean).join('\n\n'));
-      toast.success(`Uploaded ${uploadedPaths.length} workspace file${uploadedPaths.length === 1 ? '' : 's'}`);
-    } catch (error) {
-      toast.error(`Failed to upload workspace file: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setUploadProgress(null);
-    }
-  };
+  const { uploadFiles, uploadProgress, canUpload } = useWorkspaceUpload(agentId);
 
   return (
     <>
+      {/* Drag a file anywhere over the page → drop-target overlay → workspace
+          upload (durable, with the path injected into the composer), never a
+          chat attachment. */}
+      <WorkspaceDropzone
+        onDropFiles={files => void uploadFiles(files)}
+        disabled={!canUpload || uploadProgress !== null}
+      />
       <WorkspaceUploadProgressBar progress={uploadProgress} />
       {/* Keep action buttons above the switcher when this row wraps. */}
       <div className="flex flex-wrap-reverse justify-between items-center gap-2 px-1.5 pb-1.5">
@@ -392,7 +351,7 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
                 <PlusIcon className="h-5 w-5 text-neutral3 hover:text-neutral6" />
               </Button>
             )}
-            {canExecute && selectedWorkspace && (
+            {canExecute && canUpload && (
               <Button
                 variant="default"
                 size="icon-md"
@@ -415,7 +374,7 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
         multiple
         hidden
         onChange={event => {
-          void handleWorkspaceUpload(event.currentTarget.files);
+          void uploadFiles(event.currentTarget.files);
           event.currentTarget.value = '';
         }}
       />
