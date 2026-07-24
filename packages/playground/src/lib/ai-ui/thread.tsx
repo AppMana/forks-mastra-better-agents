@@ -14,6 +14,7 @@ import { useThreadRuntimeState } from './thread-runtime-state';
 import { BrowserThumbnail, useBrowserSession } from '@/domains/agents';
 import { ComposerModelSettings } from '@/domains/agents/components/composer-model-settings';
 import { ComposerModelSwitcher, ComposerModelWarning } from '@/domains/agents/components/composer-model-switcher';
+import { PrefillIndicator } from '@/domains/agents/components/prefill-indicator';
 import { usePermissions } from '@/domains/auth/hooks/use-permissions';
 import { useThreadInput } from '@/domains/conversation';
 import { useSpeechRecognition } from '@/domains/voice/hooks/use-speech-recognition';
@@ -86,6 +87,11 @@ export const Thread = ({ agentName, agentId, threadId, hasMemory, hasModelList, 
           <div />
         </ThreadPrimitive.If>
       </ThreadPrimitive.Viewport>
+
+      {/* Long prompts prefill for minutes before the first token; show progress. */}
+      <ThreadPrimitive.If running>
+        <PrefillIndicator />
+      </ThreadPrimitive.If>
 
       {/* Browser thumbnail - shown above composer when in collapsed/expanded mode */}
       {showThumbnailInChat && agentId && threadId && (
