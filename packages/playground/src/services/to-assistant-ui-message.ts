@@ -454,23 +454,34 @@ const shouldMergeAssistantMessages = (previous: ThreadMessageLike, next: ThreadM
   next.role === 'assistant' &&
   (hasSignalDataPart(previous) || hasSignalDataPart(next));
 
-export const toAssistantUIMessages = (messages: MastraDBMessage[]): ThreadMessageLike[] =>
-  messages.map(toAssistantUIMessage).reduce<ThreadMessageLike[]>((result, message) => {
-    const previous = result.at(-1);
-    if (
-      previous &&
-      shouldMergeAssistantMessages(previous, message) &&
-      Array.isArray(previous.content) &&
-      Array.isArray(message.content)
-    ) {
-      result[result.length - 1] = {
-        ...previous,
-        content: [...previous.content, ...message.content],
-        status: message.status ?? previous.status,
-      };
-      return result;
-    }
+/**
+ * The signals path emits a `start` chunk before the user message arrives,
+ * leaving an empty assistant stub at the head of the accumulated list —
+ * rendered, it's a blank bubble that makes transcripts look disordered.
+ */
+const isEmptyAssistantMessage = (message: MastraDBMessage): boolean =>
+  message.role === 'assistant' && (message.content?.parts?.length ?? 0) === 0;
 
-    result.push(message);
-    return result;
-  }, []);
+export const toAssistantUIMessages = (messages: MastraDBMessage[]): ThreadMessageLike[] =>
+  messages
+    .filter(message => !isEmptyAssistantMessage(message))
+    .map(toAssistantUIMessage)
+    .reduce<ThreadMessageLike[]>((result, message) => {
+      const previous = result.at(-1);
+      if (
+        previous &&
+        shouldMergeAssistantMessages(previous, message) &&
+        Array.isArray(previous.content) &&
+        Array.isArray(message.content)
+      ) {
+        result[result.length - 1] = {
+          ...previous,
+          content: [...previous.content, ...message.content],
+          status: message.status ?? previous.status,
+        };
+        return result;
+      }
+
+      result.push(message);
+      return result;
+    }, []);

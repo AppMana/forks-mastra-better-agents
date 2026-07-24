@@ -623,3 +623,68 @@ describe('workspace_read_file', () => {
     expect(result).toContain('[output truncated');
   });
 });
+
+describe('workspace_read_file - binary content sniffing', () => {
+  let tempDir: string;
+
+  beforeEach(async () => {
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'read-file-binary-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  it('refuses to inline binary bytes that masquerade as octet-stream text', async () => {
+    // A real binary payload (null bytes + high-entropy) under an unknown
+    // extension: mime lookup says octet-stream, but shoving the decoded
+    // garbage into context wastes tokens and can derail the model.
+    const binary = Buffer.concat([
+      Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x00, 0x01]),
+      Buffer.alloc(64, 0),
+      Buffer.from([0xff, 0xfe, 0xba, 0xad]),
+    ]);
+    await fs.writeFile(path.join(tempDir, 'mystery.dat'), binary);
+    const workspace = new Workspace({ filesystem: new LocalFilesystem({ basePath: tempDir }) });
+    const tools = await createWorkspaceTools(workspace);
+
+    const result = (await tools[WORKSPACE_TOOLS.FILESYSTEM.READ_FILE].execute(
+      { path: 'mystery.dat' },
+      { workspace },
+    )) as string;
+
+    expect(typeof result).toBe('string');
+    expect(result).toContain('binary');
+    expect(result).not.toContain('\u0000');
+    expect(result.length).toBeLessThan(400);
+  });
+
+  it('stubs extensionless binary even when the mime lookup is text-optimistic', async () => {
+    const binary = Buffer.concat([Buffer.from('MZ'), Buffer.alloc(128, 0), Buffer.from([0xde, 0xad, 0xbe, 0xef])]);
+    await fs.writeFile(path.join(tempDir, 'coredump'), binary);
+    const workspace = new Workspace({ filesystem: new LocalFilesystem({ basePath: tempDir }) });
+    const tools = await createWorkspaceTools(workspace);
+
+    const result = (await tools[WORKSPACE_TOOLS.FILESYSTEM.READ_FILE].execute(
+      { path: 'coredump' },
+      { workspace },
+    )) as string;
+
+    expect(result).toContain('binary');
+    expect(result.length).toBeLessThan(400);
+  });
+
+  it('still returns raw bytes when the agent explicitly asks for base64', async () => {
+    const binary = Buffer.from([0x00, 0x01, 0x02, 0xff]);
+    await fs.writeFile(path.join(tempDir, 'blob.dat'), binary);
+    const workspace = new Workspace({ filesystem: new LocalFilesystem({ basePath: tempDir }) });
+    const tools = await createWorkspaceTools(workspace);
+
+    const result = (await tools[WORKSPACE_TOOLS.FILESYSTEM.READ_FILE].execute(
+      { path: 'blob.dat', encoding: 'base64' },
+      { workspace },
+    )) as string;
+
+    expect(result).toContain(binary.toString('base64'));
+  });
+});

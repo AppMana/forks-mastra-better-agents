@@ -1194,3 +1194,80 @@ describe('accumulateChunk - workflow tool finish', () => {
     expect((toolPart.toolInvocation as { result: unknown }).result).toEqual({ hits: 3 });
   });
 });
+
+// =============================================================================
+// FULL MULTI-STEP INTERLEAVING (regression: scrambled reasoning/tools/replies)
+// =============================================================================
+
+describe('accumulateChunk - full multi-step interleaving', () => {
+  it('preserves emission order across a realistic 3-step agentic run', () => {
+    // reasoning → tool → (result) → reasoning → interim reply → tool → (result)
+    // → reasoning → final reply. The rendered part sequence must match exactly.
+    const out = reduce([
+      startChunk(),
+      stepStartChunk(),
+      reasoningStartChunk(),
+      reasoningDeltaChunk('plan the listing'),
+      reasoningEndChunk(),
+      toolCallChunk('call-1', 'list_files', { path: '.' }),
+      toolResultChunk('call-1', 'list_files', { files: ['a.pdf'] }),
+      stepStartChunk(),
+      reasoningStartChunk(),
+      reasoningDeltaChunk('found it, tell the user'),
+      reasoningEndChunk(),
+      textStartChunk('t1'),
+      textDeltaChunk('t1', 'Found it: a.pdf'),
+      textEndChunk('t1'),
+      toolCallChunk('call-2', 'execute_command', { command: 'pdftotext a.pdf' }),
+      toolResultChunk('call-2', 'execute_command', 'extracted'),
+      stepStartChunk(),
+      reasoningStartChunk(),
+      reasoningDeltaChunk('summarize'),
+      reasoningEndChunk(),
+      textStartChunk('t2'),
+      textDeltaChunk('t2', 'Summary: ...'),
+      textEndChunk('t2'),
+      finishChunk('stop'),
+    ]);
+
+    expect(out).toHaveLength(1);
+    const sequence = out[0].content.parts
+      .filter(p => ['reasoning', 'text', 'tool-invocation'].includes(p.type))
+      .map(p => {
+        if (p.type === 'text') return `text:${(p as MastraTextPart).text}`;
+        if (p.type === 'reasoning') return `reasoning:${(p as unknown as MastraReasoningPart).reasoning}`;
+        return `tool:${(p as MastraToolInvocationPart).toolInvocation.toolName}`;
+      });
+
+    expect(sequence).toEqual([
+      'reasoning:plan the listing',
+      'tool:list_files',
+      'reasoning:found it, tell the user',
+      'text:Found it: a.pdf',
+      'tool:execute_command',
+      'reasoning:summarize',
+      'text:Summary: ...',
+    ]);
+  });
+
+  it('keeps order even when the provider omits text-end between steps', () => {
+    // Some providers never emit text-end; a new textId after tools must still
+    // open a NEW part rather than merging into the stale streaming one.
+    const out = reduce([
+      startChunk(),
+      textStartChunk('t1'),
+      textDeltaChunk('t1', 'before tools'),
+      toolCallChunk('call-1', 'list_files', { path: '.' }),
+      toolResultChunk('call-1', 'list_files', {}),
+      textStartChunk('t2'),
+      textDeltaChunk('t2', 'after tools'),
+      finishChunk('stop'),
+    ]);
+
+    const sequence = out[0].content.parts
+      .filter(p => ['text', 'tool-invocation'].includes(p.type))
+      .map(p => (p.type === 'text' ? `text:${(p as MastraTextPart).text}` : 'tool'));
+
+    expect(sequence).toEqual(['text:before tools', 'tool', 'text:after tools']);
+  });
+});

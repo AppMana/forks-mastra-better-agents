@@ -672,3 +672,28 @@ describe('toAssistantUIMessage signal role mapping', () => {
     expect(toAssistantUIMessage(noTypeSignal).role).toBe('assistant');
   });
 });
+
+describe('toAssistantUIMessages - empty assistant suppression', () => {
+  it('drops assistant messages with no content parts (signals start stub)', () => {
+    const empty = {
+      id: 'stub',
+      role: 'assistant',
+      threadId: 't',
+      resourceId: 'r',
+      createdAt: new Date(),
+      content: { format: 2, parts: [], metadata: {} },
+    } as never;
+    const real = {
+      id: 'real',
+      role: 'assistant',
+      threadId: 't',
+      resourceId: 'r',
+      createdAt: new Date(),
+      content: { format: 2, parts: [{ type: 'text', text: 'hi' }], metadata: {} },
+    } as never;
+
+    const out = toAssistantUIMessages([empty, real]);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe('real');
+  });
+});

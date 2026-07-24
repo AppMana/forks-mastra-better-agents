@@ -69,6 +69,37 @@ function extractTailPipe(command: string): { command: string; tail?: number } {
   return { command };
 }
 
+/**
+ * When truncation drops content, implicitly persist the FULL output to the
+ * workspace (tool_outputs/) and return a footer citing the path — the agent
+ * decides whether to read/grep it, and never needs to re-run the command.
+ * Mirrors the Claude Code harness's "full output saved to <path>" behavior.
+ * Best-effort: any failure returns null and the caller keeps plain truncation.
+ */
+async function cacheFullOutput(
+  workspace: {
+    filesystem?: { writeFile?: (path: string, content: string, opts?: { recursive?: boolean }) => Promise<unknown> };
+    sandbox?: { workingDir?: string };
+  },
+  fullOutput: string,
+  truncatedOutput: string,
+  toolCallId: string | undefined,
+): Promise<string | null> {
+  const writeFile = workspace.filesystem?.writeFile?.bind(workspace.filesystem);
+  if (!writeFile) return null;
+  if (fullOutput.length <= truncatedOutput.length) return null;
+
+  const fileName = `tool_outputs/${Date.now()}-${(toolCallId ?? 'cmd').replace(/[^a-zA-Z0-9_-]/g, '').slice(-12) || 'cmd'}.log`;
+  try {
+    await writeFile(fileName, fullOutput, { recursive: true });
+  } catch {
+    return null;
+  }
+  const totalLines = fullOutput.split('\n').length;
+  const root = workspace.sandbox?.workingDir ?? '/workspace';
+  return `\n[Output truncated (${totalLines} lines total). Full output saved to ${root}/${fileName} — read or grep that file instead of re-running the command.]`;
+}
+
 /** Shared execute function used by both foreground-only and background-capable tool variants. */
 async function executeCommand(input: Record<string, any>, context: any) {
   let { command, cwd, tail } = input;
@@ -240,13 +271,17 @@ async function executeCommand(input: Record<string, any>, context: any) {
 
     span.end({ success: result.success }, { exitCode: result.exitCode });
 
+    const fullCombined = [result.stdout, result.stderr ? `stderr:\n${result.stderr}` : ''].filter(Boolean).join('\n');
+
     if (!result.success) {
       const parts = [
         await truncateOutput(result.stdout, tail, tokenLimit, tokenFrom),
         await truncateOutput(result.stderr, tail, tokenLimit, tokenFrom),
       ].filter(Boolean);
+      const truncatedCombined = parts.join('\n');
+      const cacheFooter = await cacheFullOutput(workspace, fullCombined, truncatedCombined, toolCallId);
       parts.push(`Exit code: ${result.exitCode}`);
-      return parts.join('\n');
+      return parts.join('\n') + (cacheFooter ?? '');
     }
 
     // Success must still surface stderr and the exit code: pipelines can exit 0
@@ -257,7 +292,9 @@ async function executeCommand(input: Record<string, any>, context: any) {
     const successParts = [stdoutText];
     if (stderrText) successParts.push(`stderr:\n${stderrText}`);
     const combined = successParts.filter(Boolean).join('\n');
-    return combined || '(no output; exit code 0)';
+    const cacheFooter = await cacheFullOutput(workspace, fullCombined, combined, toolCallId);
+    if (!combined) return '(no output; exit code 0)';
+    return combined + (cacheFooter ?? '');
   } catch (error) {
     await context?.writer?.custom({
       type: 'data-sandbox-exit',

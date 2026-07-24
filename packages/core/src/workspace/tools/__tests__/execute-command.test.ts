@@ -883,3 +883,91 @@ describe('executeCommandTool result formatting', () => {
     expect(result).toContain('progress written to stderr');
   });
 });
+
+describe('executeCommandTool output caching (Claude-style)', () => {
+  function createMockContextWithFs(options: {
+    executeCommand: (command: string, args: string[], opts?: ExecuteCommandOptions) => Promise<CommandResult>;
+  }) {
+    const writerCustom = vi.fn();
+    const writes: { path: string; content: string }[] = [];
+    const sandbox = {
+      id: 'test-sandbox',
+      name: 'test-sandbox',
+      provider: 'test',
+      status: 'running' as const,
+      executeCommand: options.executeCommand,
+    };
+    const filesystem = {
+      id: 'fs-1',
+      name: 'test-fs',
+      provider: 'test',
+      status: 'ready' as const,
+      readOnly: false,
+      writeFile: vi.fn(async (path: string, content: string) => {
+        writes.push({ path, content });
+      }),
+    };
+    const workspace = new Workspace({ sandbox, filesystem: filesystem as any });
+    const context: ToolExecutionContext = {
+      workspace,
+      writer: { custom: writerCustom } as any,
+      agent: { toolCallId: 'call-cache' } as any,
+    };
+    return { context, writes };
+  }
+
+  it('saves truncated output in full to tool_outputs and cites the path', async () => {
+    const bigOutput = Array.from({ length: 500 }, (_, i) => `line ${i + 1}`).join('\n');
+    const { context, writes } = createMockContextWithFs({
+      executeCommand: async () => ({ success: true, exitCode: 0, stdout: bigOutput, stderr: '', executionTimeMs: 5 }),
+    });
+
+    const result = await execute({ command: 'x', timeout: null, cwd: null, tail: null }, context);
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0].path).toMatch(/^tool_outputs\//);
+    expect(writes[0].content).toBe(bigOutput);
+    expect(result).toContain('Full output saved to /workspace/');
+    expect(result).toContain('tool_outputs/');
+    expect(result).toContain('line 500');
+    expect(result).not.toContain('line 1\n');
+  });
+
+  it('does not write a file when nothing was truncated', async () => {
+    const { context, writes } = createMockContextWithFs({
+      executeCommand: async () => ({ success: true, exitCode: 0, stdout: 'short\n', stderr: '', executionTimeMs: 2 }),
+    });
+
+    const result = await execute({ command: 'x', timeout: null, cwd: null, tail: null }, context);
+    expect(writes).toHaveLength(0);
+    expect(result).not.toContain('tool_outputs');
+  });
+
+  it('falls back to plain truncation when the cache write fails', async () => {
+    const bigOutput = Array.from({ length: 500 }, (_, i) => `line ${i + 1}`).join('\n');
+    const writerCustom = vi.fn();
+    const sandbox = {
+      id: 's',
+      name: 's',
+      provider: 'test',
+      status: 'running' as const,
+      executeCommand: async () => ({ success: true, exitCode: 0, stdout: bigOutput, stderr: '', executionTimeMs: 5 }),
+    };
+    const filesystem = {
+      id: 'f',
+      name: 'f',
+      provider: 'test',
+      status: 'ready' as const,
+      readOnly: false,
+      writeFile: vi.fn(async () => {
+        throw new Error('disk full');
+      }),
+    };
+    const workspace = new Workspace({ sandbox, filesystem: filesystem as any });
+    const context: ToolExecutionContext = { workspace, writer: { custom: writerCustom } as any };
+
+    const result = await execute({ command: 'x', timeout: null, cwd: null, tail: null }, context);
+    expect(result).toContain('line 500');
+    expect(result).not.toContain('Full output saved');
+  });
+});

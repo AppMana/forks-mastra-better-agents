@@ -241,6 +241,15 @@ export const readFileTool = createTool({
         return output;
       }
 
+      // Content sniff: mime lookup is optimistic for unknown extensions
+      // (octet-stream → "probably text"), but genuinely binary bytes must
+      // never be blobbed into the model context. Null bytes in the head of
+      // the decoded content are the classic binary fingerprint.
+      if (!encoding && fullContent.slice(0, 8192).includes('\u0000')) {
+        span.end({ success: true }, { bytesTransferred: 0 });
+        return `${stat.path} (${stat.size} bytes, ${stat.mimeType ?? 'unknown'}) — content looks binary (null bytes); not inlining it. Pass an explicit \`encoding\` (e.g. \`base64\`) only if you truly need the raw bytes.`;
+      }
+
       const hasLineRange = offset !== undefined || limit !== undefined;
       const result = extractLinesWithLimit(fullContent, offset, limit);
 
