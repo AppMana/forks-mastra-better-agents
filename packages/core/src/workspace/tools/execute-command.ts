@@ -79,7 +79,7 @@ function extractTailPipe(command: string): { command: string; tail?: number } {
 async function cacheFullOutput(
   workspace: {
     filesystem?: { writeFile?: (path: string, content: string, opts?: { recursive?: boolean }) => Promise<unknown> };
-    sandbox?: { workingDir?: string };
+    sandbox?: unknown;
   },
   fullOutput: string,
   truncatedOutput: string,
@@ -96,7 +96,7 @@ async function cacheFullOutput(
     return null;
   }
   const totalLines = fullOutput.split('\n').length;
-  const root = workspace.sandbox?.workingDir ?? '/workspace';
+  const root = (workspace.sandbox as { workingDir?: string } | undefined)?.workingDir ?? '/workspace';
   return `\n[Output truncated (${totalLines} lines total). Full output saved to ${root}/${fileName} — read or grep that file instead of re-running the command.]`;
 }
 
