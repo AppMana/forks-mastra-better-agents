@@ -975,7 +975,7 @@ describe('executeCommandTool output caching (Claude-style)', () => {
 describe('script-file guidance', () => {
   it('tells the agent to write scripts to files rather than inlining heredocs', () => {
     const description = executeCommandTool.description ?? '';
-    expect(description).toMatch(/WRITE IT TO A FILE FIRST/);
+    expect(description).toMatch(/prefer writing the script to a file/i);
     expect(description).toMatch(/heredoc/i);
   });
 
