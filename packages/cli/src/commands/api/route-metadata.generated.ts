@@ -1220,7 +1220,8 @@ export const API_ROUTE_METADATA = {
     "path": "/memory/threads",
     "pathParams": [],
     "queryParams": [
-      "agentId"
+      "agentId",
+      "resourceId"
     ],
     "bodyParams": [
       "metadata",
@@ -2787,6 +2788,26 @@ export const API_ROUTE_METADATA = {
     "bodyParams": [
       "path",
       "recursive"
+    ],
+    "hasQuery": false,
+    "hasBody": true,
+    "responseShape": {
+      "kind": "single"
+    }
+  },
+  "POST /workspaces/:workspaceId/fs/operation": {
+    "method": "POST",
+    "path": "/workspaces/:workspaceId/fs/operation",
+    "pathParams": [
+      "workspaceId"
+    ],
+    "queryParams": [],
+    "bodyParams": [
+      "destinationPath",
+      "operation",
+      "overwrite",
+      "recursive",
+      "sourcePath"
     ],
     "hasQuery": false,
     "hasBody": true,

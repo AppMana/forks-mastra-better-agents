@@ -409,7 +409,7 @@ const ComposerSendButton = ({ canExecute = true }: ComposerActionProps) => {
         className="rounded-full border border-border1 bg-surface5"
         onClick={() => void cancelStream()}
       >
-        <CircleStopIcon className="h-5 w-5" />
+        <CircleStopIcon />
       </Button>
     );
   }
