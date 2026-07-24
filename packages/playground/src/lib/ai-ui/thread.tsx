@@ -17,12 +17,16 @@ import { ComposerModelSwitcher, ComposerModelWarning } from '@/domains/agents/co
 import { usePermissions } from '@/domains/auth/hooks/use-permissions';
 import { useThreadInput } from '@/domains/conversation';
 import { useSpeechRecognition } from '@/domains/voice/hooks/use-speech-recognition';
+import { WorkspaceUploadProgressBar } from '@/domains/workspace/components/workspace-upload-progress';
 import { useWorkspaces, useWriteWorkspaceFileFromFile } from '@/domains/workspace/hooks';
 import {
   buildWorkspaceUploadNotice,
   buildWorkspaceUploadPath,
+  completeWorkspaceUploadFile,
   selectWorkspaceForUpload,
+  startWorkspaceUploadProgress,
 } from '@/domains/workspace/workspace-upload';
+import type { WorkspaceUploadProgress } from '@/domains/workspace/workspace-upload';
 import { Link } from '@/lib/link';
 // import { useBackgroundTaskStream } from '@/hooks';
 
@@ -298,6 +302,7 @@ interface ComposerActionRowProps extends ComposerActionProps {
 
 const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwitcher }: ComposerActionRowProps) => {
   const [isAddAttachmentDialogOpen, setIsAddAttachmentDialogOpen] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<WorkspaceUploadProgress | null>(null);
   const workspaceUploadInputRef = useRef<HTMLInputElement>(null);
   const composerRuntime = useComposerRuntime();
   const { data: workspacesData } = useWorkspaces();
@@ -310,10 +315,13 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
   const handleWorkspaceUpload = async (files: FileList | null) => {
     if (!selectedWorkspace || !files || files.length === 0) return;
 
+    const fileArray = Array.from(files);
     const uploadedPaths: string[] = [];
+    let progress = startWorkspaceUploadProgress(fileArray);
+    setUploadProgress(progress);
 
     try {
-      for (const file of Array.from(files)) {
+      for (const [index, file] of fileArray.entries()) {
         const path = buildWorkspaceUploadPath(file.name);
         await writeWorkspaceFile.mutateAsync({
           workspaceId: selectedWorkspace.id,
@@ -322,6 +330,8 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
           recursive: true,
         });
         uploadedPaths.push(path);
+        progress = completeWorkspaceUploadFile(progress, file, fileArray[index + 1]?.name ?? null);
+        setUploadProgress(progress);
       }
 
       const currentText = (composerRuntime.getState() as { text?: string }).text ?? '';
@@ -330,11 +340,14 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
       toast.success(`Uploaded ${uploadedPaths.length} workspace file${uploadedPaths.length === 1 ? '' : 's'}`);
     } catch (error) {
       toast.error(`Failed to upload workspace file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setUploadProgress(null);
     }
   };
 
   return (
     <>
+      <WorkspaceUploadProgressBar progress={uploadProgress} />
       {/* Keep action buttons above the switcher when this row wraps. */}
       <div className="flex flex-wrap-reverse justify-between items-center gap-2 px-1.5 pb-1.5">
         {showModelSwitcher && agentId && (
@@ -378,6 +391,7 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
                 size="icon-md"
                 type="button"
                 tooltip="Upload to Workspace"
+                disabled={uploadProgress !== null}
                 onClick={() => workspaceUploadInputRef.current?.click()}
               >
                 <Upload className="h-5 w-5 text-neutral3 hover:text-neutral6" />

@@ -13,6 +13,7 @@ import type {
   SearchResponse,
   WorkspaceSharingInfo,
 } from '../types';
+import { fileToBase64 } from '../workspace-upload';
 
 function getParentPath(path: string): string {
   return path.split('/').slice(0, -1).join('/') || (path.startsWith('/') ? '/' : '.');
@@ -166,9 +167,7 @@ export const useWriteWorkspaceFileFromFile = () => {
       if (!isWorkspaceV1Supported(client)) {
         throw new Error('Workspace v1 not supported by core or client');
       }
-      // Convert file to base64
-      const arrayBuffer = await params.file.arrayBuffer();
-      const base64 = btoa(new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+      const base64 = await fileToBase64(params.file);
 
       const workspace = (client as any).getWorkspace(params.workspaceId);
       return workspace.writeFile(params.path, base64, {
