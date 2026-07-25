@@ -497,10 +497,20 @@ export const accumulateChunk = ({ chunk, conversation, metadata }: AccumulateChu
     case 'text-start': {
       const lastMessage = result[result.length - 1];
       const textId = chunk.payload.id || `text-${Date.now()}`;
+      // Only a still-streaming part with this id is a duplicate text-start.
+      // Providers are not required to make text ids unique across steps, and
+      // the OpenAI-compatible ones do not: llama.cpp emits `txt-0` for every
+      // step of a run. Matching on the id alone therefore swallowed the second
+      // step's text-start, and that step's deltas then found the *finished*
+      // first-step part by id and appended into it — putting the final reply
+      // above the tool calls that produced it, until a reload replaced the
+      // accumulated message with the correctly-parted one from storage.
       if (
         chunk.payload.id &&
         lastMessage?.role === 'assistant' &&
-        lastMessage.content.parts.some(part => part.type === 'text' && partTextId(part) === textId)
+        lastMessage.content.parts.some(
+          part => part.type === 'text' && partTextId(part) === textId && partState(part) === 'streaming',
+        )
       ) {
         return result;
       }

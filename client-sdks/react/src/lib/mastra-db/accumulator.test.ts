@@ -497,6 +497,32 @@ describe('accumulateChunk - text streaming', () => {
     expect(textParts[1].text).toBe('step two');
   });
 
+  it('keeps multi-step text in order when the provider REUSES the text id', () => {
+    // Regression: OpenAI-compatible providers are not required to make text ids
+    // unique per step, and llama.cpp emits `txt-0` for every step. Matching a
+    // duplicate text-start on the id alone swallowed step 2's text-start, and
+    // step 2's deltas then found the finished step-1 part by id and appended
+    // into it — rendering the final reply above the tool calls that produced
+    // it, until a reload replaced the message with the stored one.
+    const out = reduce([
+      startChunk(),
+      stepStartChunk(),
+      textStartChunk('txt-0'),
+      textDeltaChunk('txt-0', 'ran the first command'),
+      textEndChunk('txt-0'),
+      toolCallChunk('tc-1', 'execute_command', { command: 'echo BRAVO' }),
+      toolResultChunk('tc-1', 'BRAVO'),
+      stepFinishChunk(),
+      stepStartChunk(),
+      textStartChunk('txt-0'),
+      textDeltaChunk('txt-0', 'ran the second command'),
+      textEndChunk('txt-0'),
+    ]);
+
+    const kinds = out[0].content.parts.map(p => (p.type === 'text' ? `text:${(p as MastraTextPart).text}` : p.type));
+    expect(kinds).toEqual(['text:ran the first command', 'tool-invocation', 'text:ran the second command']);
+  });
+
   it('text-delta without prior assistant creates one', () => {
     const out = reduce([textDeltaChunk('t1', 'orphan')]);
     expect(out).toHaveLength(1);
