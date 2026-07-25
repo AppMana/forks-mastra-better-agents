@@ -21,13 +21,14 @@ if (typeof Element !== 'undefined' && typeof Element.prototype.getAnimations !==
 }
 
 import type { WorkspaceSharingInfo } from '../types';
+import { appRoute } from '@/lib/app-routes';
 import Workspace from '@/pages/workspace';
 import { server } from '@/test/msw-server';
 
 const BASE_URL = 'http://localhost:4111';
 const WS = 'test-ws';
 
-// The sharing hook fetches the relative URL `/dragon/workspace/sharing`, which
+// The sharing hook fetches a relative URL (`appRoute('/workspace/sharing')`), which
 // Node's fetch cannot parse. Resolve relative URLs against a fixed origin so
 // msw can intercept them; delegate everything else untouched.
 let unwrapFetch: (() => void) | undefined;
@@ -114,7 +115,7 @@ function baseHandlers(
     http.get(`${BASE_URL}/api/workspaces/${WS}/skills`, () =>
       HttpResponse.json({ skills: [], isSkillsConfigured: false }),
     ),
-    http.get(`${BASE_URL}/dragon/workspace/sharing`, () => HttpResponse.json(SHARING_INFO)),
+    http.get(`${BASE_URL}${appRoute('/workspace/sharing')}`, () => HttpResponse.json(SHARING_INFO)),
   ];
 }
 
@@ -397,7 +398,7 @@ describe('Workspace page — sharing UI', () => {
   it('shows the sharing endpoint error inside the dialog', async () => {
     server.use(...baseHandlers());
     server.use(
-      http.get(`${BASE_URL}/dragon/workspace/sharing`, () =>
+      http.get(`${BASE_URL}${appRoute('/workspace/sharing')}`, () =>
         HttpResponse.json({ error: 'Sharing is not configured' }, { status: 503 }),
       ),
     );

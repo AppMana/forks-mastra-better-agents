@@ -14,6 +14,7 @@ import type {
   WorkspaceSharingInfo,
 } from '../types';
 import { fileToBase64 } from '../workspace-upload';
+import { appRoute } from '@/lib/app-routes';
 
 function getParentPath(path: string): string {
   return path.split('/').slice(0, -1).join('/') || (path.startsWith('/') ? '/' : '.');
@@ -265,7 +266,7 @@ export const useWorkspaceSharing = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: ['workspace', 'sharing'],
     queryFn: async (): Promise<WorkspaceSharingInfo> => {
-      const response = await fetch('/dragon/workspace/sharing', {
+      const response = await fetch(appRoute('/workspace/sharing'), {
         method: 'GET',
         credentials: 'include',
         headers: {

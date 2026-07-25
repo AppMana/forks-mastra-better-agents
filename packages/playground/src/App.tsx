@@ -128,6 +128,8 @@ declare global {
     MASTRA_REQUEST_CONTEXT_PRESETS?: string;
     MASTRA_EXPERIMENTAL_UI?: string;
     MASTRA_AGENT_SIGNALS?: string;
+    /** Prefix for the embedding application's own routes; see lib/app-routes.ts. */
+    MASTRA_APP_ROUTE_PREFIX?: string;
   }
 }
 

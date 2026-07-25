@@ -2,8 +2,10 @@
  * Prefill progress for the chat thread: long prompts (100k+ tokens) can spend
  * minutes in prompt processing before the first streamed token, which
  * otherwise looks like a hang. The server proxies llama-server's /slots
- * counters at /dragon/inference/prefill-status.
+ * counters at `<app route prefix>/inference/prefill-status`.
  */
+
+import { appRoute } from '@/lib/app-routes';
 
 export interface PrefillSlot {
   id: number;
@@ -13,7 +15,7 @@ export interface PrefillSlot {
   generated: number;
 }
 
-export const PREFILL_STATUS_URL = '/dragon/inference/prefill-status';
+export const prefillStatusUrl = () => appRoute('/inference/prefill-status');
 export const PREFILL_POLL_INTERVAL_MS = 1500;
 
 /** The slot still prefilling the prompt, or null once decode has started. */
@@ -35,7 +37,7 @@ export function formatPrefillLabel(slot: PrefillSlot): string {
 
 export async function fetchPrefillSlots(fetchImpl: typeof fetch = fetch): Promise<PrefillSlot[]> {
   try {
-    const response = await fetchImpl(PREFILL_STATUS_URL, { credentials: 'include' });
+    const response = await fetchImpl(prefillStatusUrl(), { credentials: 'include' });
     if (!response.ok) return [];
     const body = (await response.json()) as { slots?: PrefillSlot[] };
     return Array.isArray(body.slots) ? body.slots : [];
