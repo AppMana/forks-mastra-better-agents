@@ -40,6 +40,26 @@ export function sandboxToModelOutput(output: unknown): unknown {
 }
 
 // ---------------------------------------------------------------------------
+// NUL sanitization
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove NUL bytes from command output. PyPDF2 emits them for unmapped
+ * ligature glyphs and any command that reads a binary can produce them; the
+ * tool result is persisted verbatim into the assistant message, and while
+ * Postgres stores the resulting "\u0000" JSON escape in a text column, every
+ * `content::jsonb` cast on that row fails from then on ("\u0000 cannot be
+ * converted to text"). NUL carries no meaning for a model either, so it is
+ * dropped rather than replaced. Other control characters are left alone —
+ * they are valid in JSON and jsonb, and ANSI sequences are handled separately
+ * by {@link stripAnsi}.
+ */
+export function stripNulBytes(text: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: NUL is the target
+  return text.replace(/\u0000/g, '');
+}
+
+// ---------------------------------------------------------------------------
 // Tail (line-based truncation)
 // ---------------------------------------------------------------------------
 
@@ -132,7 +152,7 @@ export async function truncateOutput(
   tokenLimit?: number,
   tokenFrom?: 'start' | 'end' | 'sandwich',
 ): Promise<string> {
-  const tailed = applyTail(output, tail);
+  const tailed = applyTail(stripNulBytes(output), tail);
   if (tokenFrom === 'sandwich') {
     return applyTokenLimitSandwich(tailed, tokenLimit);
   }
