@@ -1,4 +1,5 @@
 import { zodToJsonSchema as schemaCompatZodToJsonSchema } from '@mastra/schema-compat/zod-to-json';
+import type { JSONSchema7 } from 'json-schema';
 import type { ZodType } from 'zod/v4';
 
 /**
@@ -25,7 +26,7 @@ function isZodType(value: unknown): value is ZodType {
  * - Date to date-time format conversion
  * - Handling of unrepresentable types
  */
-export function zodToJsonSchema<T extends ZodType | any>(zodSchema: T) {
+export function zodToJsonSchema<T extends ZodType | any>(zodSchema: T): JSONSchema7 | T {
   if (!isZodType(zodSchema)) {
     return zodSchema;
   }
