@@ -198,11 +198,35 @@ export async function runDurableStreamUntilIdle<OUTPUT = undefined>(
     releaseStreamSlot(deps.activeStreams, scopeKey, forceClose);
   };
 
-  const tryClose = () => {
-    if (closed) return;
-    if (isProcessing) return;
-    if (runningTaskIds.size > 0) return;
-    if (pendingCompletions.length > 0) return;
+  /**
+   * The local set races with dispatch: a continuation's stream can end before
+   * the task it just spawned announces `background-task-running`, so an empty
+   * set is not proof of idleness — closing on it kills the stream while the
+   * run continues. Storage is the authority.
+   */
+  const hasLiveWork = async (): Promise<boolean> => {
+    if (isProcessing || runningTaskIds.size > 0 || pendingCompletions.length > 0) return true;
+    try {
+      const { tasks } = await deps.bgManager!.listTasks({
+        agentId: agent.id,
+        threadId,
+        resourceId,
+        status: ['pending', 'running'],
+      });
+      for (const task of tasks) runningTaskIds.add(task.id);
+      return tasks.length > 0;
+    } catch {
+      return false;
+    }
+  };
+
+  const tryClose = async () => {
+    if (closed || isProcessing) return;
+    if (await hasLiveWork()) {
+      updateIdleTimer();
+      return;
+    }
+    if (closed || isProcessing || pendingCompletions.length > 0) return;
     forceClose();
   };
 
@@ -261,6 +285,9 @@ export async function runDurableStreamUntilIdle<OUTPUT = undefined>(
       innerCleanups.push(inner.cleanup);
       await pipeInner(inner.fullStream);
     } catch (err) {
+      // A silent close here reads as "the run finished"; the error must be
+      // attributable from logs.
+      (agent as any).logger?.error?.('streamUntilIdle continuation failed', { threadId, error: err });
       try {
         outerController.error(err);
       } catch {
@@ -273,7 +300,7 @@ export async function runDurableStreamUntilIdle<OUTPUT = undefined>(
       if (pendingCompletions.length > 0) {
         void processIfIdle();
       } else {
-        tryClose();
+        void tryClose();
         updateIdleTimer();
       }
     }
@@ -370,7 +397,7 @@ export async function runDurableStreamUntilIdle<OUTPUT = undefined>(
     if (pendingCompletions.length > 0) {
       void processIfIdle();
     } else {
-      tryClose();
+      void tryClose();
       updateIdleTimer();
     }
   })();
