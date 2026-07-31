@@ -13,6 +13,10 @@ import type { LSPDiagnostic, DiagnosticSeverity } from '../lsp/types';
 import type { WorkspaceSandbox } from '../sandbox';
 import type { Workspace } from '../workspace';
 
+function workspaceMetadataPartId(toolCallId: string | undefined): string | undefined {
+  return toolCallId ? `workspace-metadata:${toolCallId}` : undefined;
+}
+
 /**
  * Extract workspace from tool execution context.
  * Throws if workspace is not available.
@@ -73,6 +77,7 @@ export async function emitWorkspaceMetadata(context: ToolExecutionContext, toolN
   const toolCallId = context?.agent?.toolCallId;
   await context?.writer?.custom({
     type: 'data-workspace-metadata',
+    id: workspaceMetadataPartId(toolCallId),
     data: { toolName, toolCallId, ...info },
   });
 }
@@ -102,7 +107,11 @@ export async function runWithWorkspaceStatusUpdates<T>(
   };
 
   const emit = (info: object) =>
-    context?.writer?.custom({ type: 'data-workspace-metadata', data: { toolName, toolCallId, ...info } });
+    context?.writer?.custom({
+      type: 'data-workspace-metadata',
+      id: workspaceMetadataPartId(toolCallId),
+      data: { toolName, toolCallId, ...info },
+    });
 
   const initial = await snapshot();
   let lastStatus = initial.status;

@@ -62,6 +62,7 @@ describe('emitWorkspaceMetadata', () => {
 
     const call = writerCustom.mock.calls[0][0];
     expect(call.data.toolCallId).toBe('call-123');
+    expect(call.id).toBe('workspace-metadata:call-123');
   });
 
   it('sets toolCallId to undefined when no agent context', async () => {
@@ -76,6 +77,7 @@ describe('emitWorkspaceMetadata', () => {
 
     const call = writerCustom.mock.calls[0][0];
     expect(call.data.toolCallId).toBeUndefined();
+    expect(call.id).toBeUndefined();
   });
 
   it('does not throw when writer is undefined', async () => {
@@ -409,6 +411,7 @@ describe('runWithWorkspaceStatusUpdates', () => {
       expect(writerCustom).toHaveBeenCalledTimes(1);
       expect(writerCustom.mock.calls[0][0].type).toBe('data-workspace-metadata');
       expect(writerCustom.mock.calls[0][0].data.toolCallId).toBe('call-1');
+      expect(writerCustom.mock.calls[0][0].id).toBe('workspace-metadata:call-1');
 
       // Completion with a final transition → final chunk, result passes through
       sandbox.status = 'running';
@@ -416,6 +419,10 @@ describe('runWithWorkspaceStatusUpdates', () => {
       await vi.advanceTimersByTimeAsync(0);
       await expect(resultPromise).resolves.toBe('done');
       expect(writerCustom).toHaveBeenCalledTimes(2);
+      expect(writerCustom.mock.calls.map(call => call[0].id)).toEqual([
+        'workspace-metadata:call-1',
+        'workspace-metadata:call-1',
+      ]);
     } finally {
       vi.useRealTimers();
     }

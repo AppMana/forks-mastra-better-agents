@@ -718,6 +718,7 @@ export class AIV5Adapter {
         if (typeof p.type === 'string' && p.type.startsWith('data-')) {
           return {
             type: p.type,
+            ...('id' in p && typeof p.id === 'string' ? { id: p.id } : {}),
             data: 'data' in p ? (p as any).data : undefined,
           };
         }
