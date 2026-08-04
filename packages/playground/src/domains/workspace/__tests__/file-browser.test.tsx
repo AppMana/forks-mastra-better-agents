@@ -45,7 +45,7 @@ function renderBrowser(props: Partial<FileBrowserProps> = {}) {
 async function openEntryMenu(entryName: string) {
   const trigger = screen.getByLabelText(`Actions for ${entryName}`);
   fireEvent.click(trigger, { button: 0 });
-  await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+  expect(await screen.findByRole('menu')).toBeTruthy();
 }
 
 describe('FileBrowser — directory listing', () => {
@@ -264,16 +264,16 @@ describe('FileBrowser — file operations', () => {
 describe('FileBrowser — sharing affordances', () => {
   it('does not render the sharing menu when onOpenSharing is absent', () => {
     renderBrowser();
-    expect(screen.queryByLabelText('Sharing options')).toBeNull();
+    expect(screen.queryByLabelText('Open in Desktop')).toBeNull();
   });
 
   it('opens the sharing menu and reports the selected platform', async () => {
     const onOpenSharing = vi.fn();
     renderBrowser({ onOpenSharing });
 
-    const trigger = screen.getByLabelText('Sharing options');
+    const trigger = screen.getByLabelText('Open in Desktop');
     fireEvent.click(trigger, { button: 0 });
-    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+    expect(await screen.findByRole('menu')).toBeTruthy();
 
     expect(screen.getByRole('menuitem', { name: /access in windows/i })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: /access in macos/i })).toBeTruthy();
@@ -287,15 +287,15 @@ describe('FileBrowser — sharing affordances', () => {
     const onOpenSharing = vi.fn();
     renderBrowser({ onOpenSharing });
 
-    const trigger = screen.getByLabelText('Sharing options');
+    const trigger = screen.getByLabelText('Open in Desktop');
 
     fireEvent.click(trigger, { button: 0 });
-    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+    expect(await screen.findByRole('menu')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /access in windows/i }));
     expect(onOpenSharing).toHaveBeenCalledWith('windows');
 
     fireEvent.click(trigger, { button: 0 });
-    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+    expect(await screen.findByRole('menu')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /access in ubuntu/i }));
     expect(onOpenSharing).toHaveBeenCalledWith('linux');
   });

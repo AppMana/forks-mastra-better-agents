@@ -353,7 +353,7 @@ describe('Workspace page — sharing UI', () => {
     server.use(...baseHandlers());
     renderWorkspacePage();
 
-    const trigger = await screen.findByLabelText('Sharing options');
+    const trigger = await screen.findByLabelText('Open in Desktop');
     fireEvent.click(trigger, { button: 0 });
     expect(await screen.findByRole('menu')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /access in windows/i }));
@@ -371,7 +371,7 @@ describe('Workspace page — sharing UI', () => {
     server.use(...baseHandlers());
     renderWorkspacePage();
 
-    const trigger = await screen.findByLabelText('Sharing options');
+    const trigger = await screen.findByLabelText('Open in Desktop');
     fireEvent.click(trigger, { button: 0 });
     expect(await screen.findByRole('menu')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /access in ubuntu/i }));
@@ -387,7 +387,7 @@ describe('Workspace page — sharing UI', () => {
     server.use(...baseHandlers());
     renderWorkspacePage();
 
-    const trigger = await screen.findByLabelText('Sharing options');
+    const trigger = await screen.findByLabelText('Open in Desktop');
     fireEvent.click(trigger, { button: 0 });
     expect(await screen.findByRole('menu')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /access in macos/i }));
@@ -407,7 +407,7 @@ describe('Workspace page — sharing UI', () => {
     );
     renderWorkspacePage();
 
-    const trigger = await screen.findByLabelText('Sharing options');
+    const trigger = await screen.findByLabelText('Open in Desktop');
     fireEvent.click(trigger, { button: 0 });
     expect(await screen.findByRole('menu')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /access in windows/i }));
