@@ -96,7 +96,7 @@ import { waitForSuspendedSnapshot } from '../workflows/utils';
 import type { AnyWorkflow } from '../workflows/workflow';
 import { createWorkflow, createStep, isProcessor } from '../workflows/workflow';
 import type { AnyWorkspace } from '../workspace';
-import { createWorkspaceTools } from '../workspace';
+import { createWorkspaceTools, resolveWorkspaceOwnerId } from '../workspace';
 import { createSkillTools } from '../workspace/skills';
 import type { SkillFormat } from '../workspace/skills';
 import { AgentLegacyHandler } from './agent-legacy';
@@ -1636,11 +1636,19 @@ export class Agent<
       resolvedWorkspace.__setLogger(this.logger);
 
       // Auto-register dynamically created workspace with Mastra for lookup via listWorkspaces()/getWorkspaceById()
+      //
+      // The registry is process-global while this factory may return a
+      // different workspace per caller, so record who the workspace was built
+      // for. `GET /workspaces` lists an owned entry back only to that same
+      // principal; without the owner, one caller's workspace id would appear
+      // in every other caller's workspace list.
       if (this.#mastra) {
+        const owner = resolveWorkspaceOwnerId(requestContext);
         this.#mastra.addWorkspace(resolvedWorkspace, undefined, {
           source: 'agent',
           agentId: this.id,
           agentName: this.name,
+          ...(owner ? { owner } : {}),
         });
       }
 

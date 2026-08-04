@@ -2,12 +2,12 @@ import type { AppendMessage, AssistantRuntime } from '@assistant-ui/react';
 import { useExternalStoreRuntime, AssistantRuntimeProvider } from '@assistant-ui/react';
 import type { MastraDBMessage } from '@mastra/core/agent/message-list';
 import { RequestContext } from '@mastra/core/di';
-import type { CoreUserMessage } from '@mastra/core/llm';
-import { ErrorBoundary, fileToBase64 } from '@mastra/playground-ui';
+import { ErrorBoundary } from '@mastra/playground-ui';
 import { useMastraClient, useChat } from '@mastra/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { convertToAIAttachments } from './attachment-messages';
 import { getCanSendWhileStreaming } from './mastra-runtime-state';
 import {
   buildGlobalOmPartsByCycleId,
@@ -89,52 +89,6 @@ const getAppendMessageText = (message: AppendMessage) => {
   }
 
   throw new Error('Only text messages are supported');
-};
-
-const convertToAIAttachments = async (attachments: AppendMessage['attachments']): Promise<Array<CoreUserMessage>> => {
-  const promises = (attachments ?? [])
-    .filter(attachment => attachment.type === 'image' || attachment.type === 'document')
-    .map(async attachment => {
-      const isFileFromURL = attachment.name.startsWith('https://');
-
-      if (attachment.type === 'document') {
-        if (attachment.contentType === 'application/pdf') {
-          // @ts-expect-error - TODO: fix this type issue somehow
-          const pdfText = attachment.content?.[0]?.text || '';
-          return {
-            role: 'user' as const,
-            content: [
-              {
-                type: 'file' as const,
-                data: isFileFromURL ? attachment.name : `data:application/pdf;base64,${pdfText}`,
-                mimeType: attachment.contentType,
-                filename: attachment.name,
-              },
-            ],
-          };
-        }
-
-        return {
-          role: 'user' as const,
-          // @ts-expect-error - TODO: fix this type issue somehow
-          content: attachment.content[0]?.text || '',
-        };
-      }
-
-      return {
-        role: 'user' as const,
-
-        content: [
-          {
-            type: 'image' as const,
-            image: isFileFromURL ? attachment.name : await fileToBase64(attachment.file!),
-            mimeType: attachment.file!.type,
-          },
-        ],
-      };
-    });
-
-  return Promise.all(promises);
 };
 
 export function MastraRuntimeProvider({

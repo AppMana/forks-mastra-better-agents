@@ -3,6 +3,8 @@ import { Button, cn } from '@mastra/playground-ui';
 import { AudioLinesIcon, CheckIcon, CopyIcon, StopCircleIcon } from 'lucide-react';
 
 import { ToolFallback } from '../tools/tool-fallback';
+import { AttachedFileDataPart } from './attached-file';
+import { ATTACHMENT_PART_NAME } from './attachment-data';
 import { ErrorAwareText } from './error-aware-text';
 import { Reasoning } from './reasoning';
 import { SignalDataPart } from './signal-badge';
@@ -48,7 +50,10 @@ export const AssistantMessage = ({ hasModelList }: AssistantMessageProps) => {
             Text: ErrorAwareText,
             tools: { Fallback: ToolFallback },
             Reasoning: Reasoning,
-            data: { by_name: { signal: SignalDataPart } },
+            // `data-<name>` parts arrive here as `name` (to-assistant-ui-message.ts
+            // strips the prefix). There is no auto-discovery: a data part with no
+            // entry in this map renders nothing at all.
+            data: { by_name: { signal: SignalDataPart, [ATTACHMENT_PART_NAME]: AttachedFileDataPart } },
           }}
         />
       </div>

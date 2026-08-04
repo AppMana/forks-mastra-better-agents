@@ -4,7 +4,20 @@
  */
 
 import { useComposer, useComposerRuntime } from '@assistant-ui/react';
+import { toast } from '@mastra/playground-ui';
 import { useCallback } from 'react';
+
+/**
+ * `addAttachment` rejects when the adapter refuses the file — an unsupported
+ * type, or a workspace upload the server turned down, an oversize one most
+ * often. Nothing else is watching that promise, so without this the file simply
+ * never appears and the user is told nothing.
+ */
+export const reportAttachmentFailure = (file: { name: string }, error: unknown) => {
+  const reason = error instanceof Error ? error.message : String(error);
+  // The adapter's own messages already name the file; don't say it twice.
+  toast.error(reason.includes(file.name) ? reason : `Could not attach ${file.name}: ${reason}`);
+};
 
 export const useComposerAddAttachment = ({
   multiple = true,
@@ -34,9 +47,9 @@ export const useComposerAddAttachment = ({
       const fileList = (e.target as HTMLInputElement).files;
       if (!fileList) return;
       for (const file of fileList) {
-        void composerRuntime.addAttachment(file);
-        onChange?.(Array.from(fileList));
+        void composerRuntime.addAttachment(file).catch(error => reportAttachmentFailure(file, error));
       }
+      onChange?.(Array.from(fileList));
 
       document.body.removeChild(input);
     };
@@ -48,7 +61,7 @@ export const useComposerAddAttachment = ({
     };
 
     input.click();
-  }, [composerRuntime, multiple]);
+  }, [composerRuntime, multiple, onChange]);
 
   if (disabled) return undefined;
   return callback;

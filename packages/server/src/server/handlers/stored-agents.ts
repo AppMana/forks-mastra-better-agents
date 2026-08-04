@@ -1,3 +1,4 @@
+import { codeAgentEditorOwnership, storedInstructionsAreEmpty } from '@mastra/core/agent';
 import type { StorageCreateAgentInput, StorageUpdateAgentInput } from '@mastra/core/storage';
 import type { z } from 'zod/v4';
 
@@ -94,33 +95,54 @@ const CODE_AGENT_OVERRIDE_FIELDS = [
 ] as const;
 
 /**
- * Derive ownership flags from a code agent's editor config.
- * Mirrors the semantics of `editor.agent.applyStoredOverrides` so that
- * client save payloads, persisted snapshots, and export output all agree
- * on which fields Studio is allowed to own.
+ * Ownership flags for a code agent, from `@mastra/core/agent` so that the
+ * Studio form that builds a save payload, this handler, and
+ * `editor.agent.applyStoredOverrides` cannot drift apart. They did once, and
+ * the drift silently emptied a code agent's system prompt.
  */
-function getCodeAgentOwnership(editorConfig: unknown): {
-  ownsInstructions: boolean;
-  ownsTools: boolean;
-  ownsToolDescriptionsOnly: boolean;
-} {
-  if (editorConfig === false) {
-    return { ownsInstructions: false, ownsTools: false, ownsToolDescriptionsOnly: false };
+const getCodeAgentOwnership = codeAgentEditorOwnership;
+
+type CodeAgentLike = { __getEditorConfig?: () => unknown; source?: string };
+
+/** The code-defined agent behind a stored id, if this id shadows one. */
+function findCodeAgent(mastra: { getAgentById?: (id: string) => unknown }, agentId: string): CodeAgentLike | undefined {
+  let agent: CodeAgentLike | undefined;
+  try {
+    agent = mastra.getAgentById?.(agentId) as CodeAgentLike | undefined;
+  } catch {
+    return undefined;
   }
-  if (editorConfig === undefined || editorConfig === null) {
-    // Legacy default: code agents without explicit editor config behave as fully editable.
-    return { ownsInstructions: true, ownsTools: true, ownsToolDescriptionsOnly: false };
+  return agent?.source === 'code' ? agent : undefined;
+}
+
+/**
+ * Decide what a save may do to a code agent's `instructions`, before anything
+ * is written.
+ *
+ * A code agent's prompt comes from its deployment config; the stored record is
+ * only an override. Two outcomes:
+ *
+ *  - the editor config does not give Studio the field → drop it, so the
+ *    snapshot never carries a value the runtime would not read back;
+ *  - Studio owns it but sent nothing usable → reject with 400. This is not a
+ *    way to "clear" the prompt: an agent with empty instructions throws on
+ *    every request, so persisting it would take the agent down with no route
+ *    back through the product.
+ */
+function resolveCodeAgentInstructions(codeAgent: CodeAgentLike, instructions: unknown, agentId: string): unknown {
+  const { ownsInstructions } = getCodeAgentOwnership(codeAgent.__getEditorConfig?.());
+  if (!ownsInstructions) {
+    return undefined;
   }
-  if (typeof editorConfig !== 'object') {
-    return { ownsInstructions: false, ownsTools: false, ownsToolDescriptionsOnly: false };
+  if (storedInstructionsAreEmpty(instructions)) {
+    throw new HTTPException(400, {
+      message:
+        `Refusing to save empty instructions for code-defined agent ${agentId}: ` +
+        `an agent with no instructions cannot run. Write a prompt, or leave instructions out ` +
+        `of the request to keep the code-defined ones.`,
+    });
   }
-  const cfg = editorConfig as { instructions?: unknown; tools?: unknown };
-  const ownsInstructions = cfg.instructions === true;
-  const toolsCfg = cfg.tools;
-  const ownsTools = toolsCfg === true;
-  const ownsToolDescriptionsOnly =
-    typeof toolsCfg === 'object' && toolsCfg !== null && (toolsCfg as { description?: unknown }).description === true;
-  return { ownsInstructions, ownsTools, ownsToolDescriptionsOnly };
+  return instructions;
 }
 
 function sortForStableJson(value: unknown): unknown {
@@ -469,6 +491,21 @@ export const CREATE_STORED_AGENT_ROUTE: ServerRoute<
         throw new HTTPException(409, { message: `Agent with id ${id} already exists` });
       }
 
+      // A create against an id that already names a code agent is the FIRST
+      // save of an override, and it is immediately live. It gets the same
+      // ownership rules as an update — the create path skipping them is how an
+      // empty prompt reached the database on the very first save.
+      const codeAgentForCreate = findCodeAgent(mastra, id);
+      if (codeAgentForCreate) {
+        const ownership = getCodeAgentOwnership(codeAgentForCreate.__getEditorConfig?.());
+        instructions = resolveCodeAgentInstructions(codeAgentForCreate, instructions, id) as typeof instructions;
+        if (!ownership.ownsTools && !ownership.ownsToolDescriptionsOnly) {
+          tools = undefined;
+          integrationTools = undefined;
+          mcpClients = undefined;
+        }
+      }
+
       // Force authorId from the authenticated caller; ignore any body-provided value.
       // No owner = always public (no auth / no user context).
       // With an owner, respect the client's choice, defaulting to 'private'.
@@ -653,17 +690,14 @@ export const UPDATE_STORED_AGENT_ROUTE: ServerRoute<
       // For code-defined agents, strip fields the editor config does not allow
       // Studio to own. This keeps stored snapshots (and the per-entity files
       // they get persisted to) free of fields the server never reads back.
-      let codeAgentForUpdate: { __getEditorConfig?: () => unknown; source?: string } | undefined;
-      try {
-        codeAgentForUpdate = mastra.getAgentById?.(storedAgentId) as typeof codeAgentForUpdate;
-      } catch {
-        codeAgentForUpdate = undefined;
-      }
-      if (codeAgentForUpdate?.source === 'code') {
+      const codeAgentForUpdate = findCodeAgent(mastra, storedAgentId);
+      if (codeAgentForUpdate) {
         const ownership = getCodeAgentOwnership(codeAgentForUpdate.__getEditorConfig?.());
-        if (!ownership.ownsInstructions) {
-          instructions = undefined;
-        }
+        instructions = resolveCodeAgentInstructions(
+          codeAgentForUpdate,
+          instructions,
+          storedAgentId,
+        ) as typeof instructions;
         if (!ownership.ownsTools && !ownership.ownsToolDescriptionsOnly) {
           tools = undefined;
           integrationTools = undefined;

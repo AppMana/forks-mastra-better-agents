@@ -61,6 +61,16 @@
         "default": "./dist/agent/durable/index.cjs"
       }
     },
+    "./agent/editor-ownership": {
+      "import": {
+        "types": "./dist/agent/editor-ownership.d.ts",
+        "default": "./dist/agent/editor-ownership.js"
+      },
+      "require": {
+        "types": "./dist/agent/editor-ownership.d.ts",
+        "default": "./dist/agent/editor-ownership.cjs"
+      }
+    },
     "./agent/message-list": {
       "import": {
         "types": "./dist/agent/message-list/index.d.ts",

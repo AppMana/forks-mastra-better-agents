@@ -188,6 +188,56 @@ export async function uploadFileToAppRoute(file: File): Promise<UploadedWorkspac
   return uploaded;
 }
 
+/** Writes a file into one workspace's own tree — the workspace file API. */
+export type WorkspaceFileWriter = (params: {
+  workspaceId: string;
+  path: string;
+  file: File;
+  recursive: boolean;
+}) => Promise<unknown>;
+
+/** A landed upload: the path to announce, and the root that path hangs off. */
+export interface WorkspaceUploadResult {
+  /** Workspace-root-relative, or already absolute when `noticeRoot` is empty. */
+  path: string;
+  /** Prefix the announced path needs, or '' when `path` is already absolute. */
+  noticeRoot: string;
+}
+
+/**
+ * Upload one file and report where it landed.
+ *
+ * The single decision point for where a file goes: the drag-and-drop overlay
+ * and the composer's "+" attachment adapter both come through here, so a file
+ * lands in the same tree and is announced under the same path no matter which
+ * gesture the user reached for.
+ */
+export async function uploadWorkspaceFile(
+  file: File,
+  {
+    workspace,
+    writeWorkspaceFile,
+  }: {
+    workspace?: WorkspaceItem;
+    writeWorkspaceFile: WorkspaceFileWriter;
+  },
+): Promise<WorkspaceUploadResult> {
+  const uploaded = await uploadFileToAppRoute(file);
+  // The route's paths are already absolute: it resolved them from the mounts
+  // it configured, so there is no root left for the client to prepend.
+  if (uploaded) return { path: uploaded.workspacePath, noticeRoot: '' };
+
+  // No application upload route: the workspace file API is the only transport,
+  // and it can only write into a workspace this client already knows about.
+  if (!workspace) {
+    throw new Error(`No writable workspace is available to upload ${file.name} into`);
+  }
+
+  const path = buildWorkspaceUploadPath(file.name);
+  await writeWorkspaceFile({ workspaceId: workspace.id, path, file, recursive: true });
+  return { path, noticeRoot: workspaceUploadNoticeRoot(workspace) };
+}
+
 async function uploadRouteErrorMessage(response: Response): Promise<string> {
   const text = await response.text();
   if (!text) return `HTTP ${response.status}`;

@@ -32,6 +32,7 @@ import AgentEvaluate from './pages/agents/agent-evaluate';
 import AgentPlayground from './pages/agents/agent-playground';
 import AgentReview from './pages/agents/agent-review';
 import AgentTraces from './pages/agents/agent-traces';
+import AgentWorkspace from './pages/agents/workspace';
 import CmsAgentAgentsPage from './pages/cms/agents/agents';
 import { CreateLayoutWrapper } from './pages/cms/agents/create-layout';
 import { EditLayoutWrapper } from './pages/cms/agents/edit-layout';
@@ -442,6 +443,8 @@ export const routes: RouteObject[] = [
           },
           { path: 'chat', element: <Agent /> },
           { path: 'chat/:threadId', element: <Agent /> },
+          { path: 'workspace', element: <AgentWorkspace /> },
+          { path: 'workspace/:threadId', element: <AgentWorkspace /> },
           ...(isExperimentalFeatures
             ? [
                 { path: 'editor', element: <AgentPlayground /> },

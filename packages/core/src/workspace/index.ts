@@ -1,6 +1,9 @@
 // Workspace
 export * from './workspace';
 
+// Ownership of request-scoped workspaces
+export { resolveWorkspaceOwnerId, isWorkspaceVisibleTo, type WorkspaceOwnerContext } from './owner';
+
 // LSP
 export type { CustomLSPServer, LSPConfig, LSPDiagnostic, DiagnosticSeverity, LSPServerDef } from './lsp/types';
 

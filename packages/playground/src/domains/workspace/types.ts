@@ -44,6 +44,15 @@ export interface WorkspaceItem {
   source: 'mastra' | 'agent';
   agentId?: string;
   agentName?: string;
+  /**
+   * Conversation this workspace directory belongs to. Absent on workspaces
+   * that are not tied to a conversation. This is the ONLY supported way to
+   * find a conversation's workspace — the directory slug is server-generated
+   * and must never be parsed or reconstructed on the client.
+   */
+  threadId?: string;
+  /** Absolute canonical directory path, e.g. `/workspaces/<slug>`. */
+  path?: string;
   capabilities: WorkspaceCapabilities;
   safety: WorkspaceSafety;
 }

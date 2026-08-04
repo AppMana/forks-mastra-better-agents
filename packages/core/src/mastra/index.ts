@@ -2179,7 +2179,7 @@ export class Mastra<
   public addWorkspace(
     workspace: AnyWorkspace,
     key?: string,
-    metadata?: { source?: 'mastra' | 'agent'; agentId?: string; agentName?: string },
+    metadata?: { source?: 'mastra' | 'agent'; agentId?: string; agentName?: string; owner?: string },
   ): void {
     if (!workspace) {
       throw createUndefinedPrimitiveError('workspace', workspace, key);
@@ -2204,6 +2204,9 @@ export class Mastra<
       source,
       ...(metadata?.agentId ? { agentId: metadata.agentId } : {}),
       ...(metadata?.agentName ? { agentName: metadata.agentName } : {}),
+      // Recorded, never inferred: a dynamic factory can build one workspace per
+      // caller, and an entry without an owner is visible to every caller.
+      ...(metadata?.owner ? { owner: metadata.owner } : {}),
     };
   }
 

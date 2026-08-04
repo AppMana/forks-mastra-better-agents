@@ -63,6 +63,7 @@ export default defineConfig({
     'src/processors/index.ts',
     'src/zod-to-json.ts',
     'src/evals/scoreTraces/index.ts',
+    'src/agent/editor-ownership.ts',
     'src/agent/message-list/index.ts',
     'src/agent/durable/index.ts',
     'src/auth/ee/index.ts',

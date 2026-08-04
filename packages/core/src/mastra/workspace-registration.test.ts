@@ -477,4 +477,83 @@ describe('Workspace Registration', () => {
       expect(workspaces['reused-workspace']!.workspace).toBe(workspace);
     });
   });
+
+  describe('workspace ownership', () => {
+    // Key an auth middleware writes the caller's resource id under.
+    const RESOURCE_ID_KEY = 'mastra__resourceId';
+
+    it('should record the owner supplied to addWorkspace', () => {
+      const mastra = new Mastra({ logger: false });
+      const workspace = createWorkspace('owned-workspace');
+
+      mastra.addWorkspace(workspace, undefined, { owner: 'principal-a' });
+
+      expect(mastra.listWorkspaces()['owned-workspace']!.owner).toBe('principal-a');
+    });
+
+    it('should leave owner undefined when none is supplied', () => {
+      const mastra = new Mastra({ logger: false });
+      const workspace = createWorkspace('deployment-workspace');
+
+      mastra.addWorkspace(workspace);
+
+      expect(mastra.listWorkspaces()['deployment-workspace']!.owner).toBeUndefined();
+    });
+
+    it('should record the calling principal as owner for a per-caller dynamic workspace', async () => {
+      // One workspace per caller, and none at all without a caller — so the
+      // registration that happens when the agent is added stays out of the way.
+      const perCaller = new Map<string, ReturnType<typeof createWorkspace>>();
+
+      const agent = new Agent({
+        id: 'per-caller-agent',
+        name: 'Per Caller Agent',
+        instructions: 'Test',
+        model: createMockModel(),
+        workspace: ({ requestContext }) => {
+          const callerId = requestContext?.get(RESOURCE_ID_KEY) as string | undefined;
+          if (!callerId) return undefined;
+          if (!perCaller.has(callerId)) {
+            perCaller.set(callerId, createWorkspace(`ws-${callerId}`));
+          }
+          return perCaller.get(callerId);
+        },
+      });
+
+      const mastra = new Mastra({ logger: false, agents: { agent } });
+
+      const { RequestContext } = await import('../request-context');
+
+      const contextA = new RequestContext();
+      contextA.set(RESOURCE_ID_KEY, 'principal-a');
+      await agent.getWorkspace({ requestContext: contextA });
+
+      const contextB = new RequestContext();
+      contextB.set(RESOURCE_ID_KEY, 'principal-b');
+      await agent.getWorkspace({ requestContext: contextB });
+
+      const workspaces = mastra.listWorkspaces();
+      expect(workspaces['ws-principal-a']!.owner).toBe('principal-a');
+      expect(workspaces['ws-principal-a']!.source).toBe('agent');
+      expect(workspaces['ws-principal-b']!.owner).toBe('principal-b');
+    });
+
+    it('should leave owner undefined for a dynamic workspace resolved without a caller', async () => {
+      const workspace = createWorkspace('anonymous-dynamic');
+
+      const agent = new Agent({
+        id: 'anonymous-agent',
+        name: 'Anonymous Agent',
+        instructions: 'Test',
+        model: createMockModel(),
+        workspace: () => workspace,
+      });
+
+      const mastra = new Mastra({ logger: false, agents: { agent } });
+
+      await agent.getWorkspace();
+
+      expect(mastra.listWorkspaces()['anonymous-dynamic']!.owner).toBeUndefined();
+    });
+  });
 });

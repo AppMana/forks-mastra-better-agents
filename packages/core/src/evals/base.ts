@@ -1042,6 +1042,10 @@ export type MastraPartType =
   | 'data-tool-call-suspended'
   | 'data-system-reminder'
   | 'data-signal'
+  // A file the assistant attached to its reply, as `{ name, path, size,
+  // mediaType }`. Emitted non-transient, so it persists with the message and
+  // the download link survives a reload.
+  | 'data-attachment'
   | 'data-user-message'
   | 'data-tripwire'
   | 'data-structured-output'

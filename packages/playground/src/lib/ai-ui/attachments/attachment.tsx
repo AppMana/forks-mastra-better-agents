@@ -2,13 +2,39 @@ import type { AttachmentState } from '@assistant-ui/react';
 import { AttachmentPrimitive, ComposerPrimitive, useAttachment } from '@assistant-ui/react';
 import { Button, Spinner, Tooltip, TooltipContent, TooltipTrigger, Icon, fileToBase64 } from '@mastra/playground-ui';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
-import { X } from 'lucide-react';
+import { File as FileIcon, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useAttachmentSrc } from '../hooks/use-attachment-src';
 import { useHasAttachments } from '../hooks/use-has-attachments';
 import { useLoadBrowserFile } from '../hooks/use-load-browser-file';
 import { ImageEntry, TxtEntry, PdfEntry } from './attachment-preview-dialog';
+
+/**
+ * How much of an attachment the composer will read into memory for a preview.
+ *
+ * Every attached file is a `document` now, whatever its type, because every one
+ * of them is uploaded rather than inlined. The thumbnail is the only thing left
+ * that still touches the bytes, so it needs the size guard the old per-type
+ * adapters used to provide: `file.text()` on a video, or base64 on a
+ * hundred-megabyte PDF, freezes the tab for a picture the size of a postage
+ * stamp.
+ */
+const PREVIEW_BYTE_LIMIT = 2 * 1024 * 1024;
+
+/** Types whose bytes are worth reading for a preview, and cheap to render. */
+const TEXT_PREVIEW_TYPE = /^text\/|json|xml|csv|yaml|javascript|typescript|markdown|x-sh$/i;
+
+const isSmallEnoughToPreview = (file?: File) => !!file && file.size <= PREVIEW_BYTE_LIMIT;
+
+const canPreviewAsText = (file?: File) => isSmallEnoughToPreview(file) && TEXT_PREVIEW_TYPE.test(file!.type);
+
+/** A file the composer will name but not open. */
+const ComposerFileAttachment = () => (
+  <div className="flex items-center justify-center h-full w-full">
+    <FileIcon className="text-neutral3" />
+  </div>
+);
 
 const ComposerTxtAttachment = ({ document }: { document: AttachmentState }) => {
   const { isLoading, text } = useLoadBrowserFile(document.file);
@@ -66,12 +92,24 @@ const AttachmentThumbnail = () => {
             <AttachmentPrimitive.Root>
               <TooltipTrigger asChild>
                 <div className="overflow-hidden size-16 rounded-lg bg-surface3 border border-border1 ">
-                  {isImage ? (
+                  {/* An image that is too large, or the wrong format, to show
+                      the model is still an image to the user: the thumbnail
+                      comes from an object URL, which costs nothing to make at
+                      any file size. */}
+                  {isImage || document?.contentType?.startsWith('image/') ? (
                     <ImageEntry src={actualSrc ?? ''} />
                   ) : document?.contentType === 'application/pdf' ? (
-                    <ComposerPdfAttachment document={document} />
+                    isSmallEnoughToPreview(document.file) ? (
+                      <ComposerPdfAttachment document={document} />
+                    ) : (
+                      <ComposerFileAttachment />
+                    )
                   ) : document ? (
-                    <ComposerTxtAttachment document={document} />
+                    canPreviewAsText(document.file) ? (
+                      <ComposerTxtAttachment document={document} />
+                    ) : (
+                      <ComposerFileAttachment />
+                    )
                   ) : null}
                 </div>
               </TooltipTrigger>

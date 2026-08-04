@@ -186,6 +186,63 @@ describe('applyStoredOverrides', () => {
     expect(instructions).toBe('You are a code-defined agent.');
   });
 
+  // A stored override that resolves to nothing must never blank a code agent's
+  // prompt: an agent with empty instructions throws on every request, so a bad
+  // save would take the agent down permanently. The code definition is the
+  // floor the override can never go below.
+  it('keeps code instructions when the stored override is an empty block array', async () => {
+    const { editor, codeAgent } = await setup({
+      name: 'Stored Agent',
+      instructions: [],
+      model: { provider: 'openai', name: 'gpt-4o' },
+    });
+
+    const result = await editor.agent.applyStoredOverrides(codeAgent);
+
+    expect(await result.getInstructions()).toBe('You are a code-defined agent.');
+  });
+
+  it('keeps code instructions when the stored override is an empty string', async () => {
+    const { editor, codeAgent } = await setup({
+      name: 'Stored Agent',
+      instructions: '   ',
+      model: { provider: 'openai', name: 'gpt-4o' },
+    });
+
+    const result = await editor.agent.applyStoredOverrides(codeAgent);
+
+    expect(await result.getInstructions()).toBe('You are a code-defined agent.');
+  });
+
+  // Blocks that exist but resolve to nothing at request time (an unpublished
+  // prompt block reference, or every block excluded by its rules) are the same
+  // failure one step later, so they get the same floor.
+  it('keeps code instructions when every stored block resolves to nothing at request time', async () => {
+    const { editor, codeAgent } = await setup({
+      name: 'Stored Agent',
+      instructions: [{ type: 'prompt_block_ref', id: 'never-published' }],
+      model: { provider: 'openai', name: 'gpt-4o' },
+    });
+
+    const result = await editor.agent.applyStoredOverrides(codeAgent);
+
+    expect(await result.getInstructions({ requestContext: new RequestContext() })).toBe(
+      'You are a code-defined agent.',
+    );
+  });
+
+  it('still applies a stored override that resolves to real content', async () => {
+    const { editor, codeAgent } = await setup({
+      name: 'Stored Agent',
+      instructions: [{ type: 'prompt_block', content: 'Stored block content.' }],
+      model: { provider: 'openai', name: 'gpt-4o' },
+    });
+
+    const result = await editor.agent.applyStoredOverrides(codeAgent);
+
+    expect(await result.getInstructions({ requestContext: new RequestContext() })).toBe('Stored block content.');
+  });
+
   it('returns agent unchanged when editor is not registered', async () => {
     const editor = new MastraEditor();
     const agent = new Agent({

@@ -441,6 +441,16 @@ export interface RegisteredWorkspace {
   source: 'mastra' | 'agent';
   agentId?: string;
   agentName?: string;
+  /**
+   * Whose workspace this is, when the workspace was resolved from a request.
+   *
+   * The registry is process-global and a dynamic workspace factory may build a
+   * different workspace per caller, so without this an entry created while
+   * serving one user would be listed to every other user. Undefined means the
+   * workspace belongs to the deployment rather than to a person, and is listed
+   * to everyone; a set value is only listed back to that same principal.
+   */
+  owner?: string;
 }
 
 // =============================================================================

@@ -741,9 +741,112 @@ describe('Stored Agents Handlers', () => {
         expect((error as HTTPException).status).toBe(413);
       }
     });
+
+    // A code agent's prompt lives in its deployment config, not in the
+    // database. An override that carries no prompt does not "clear" the
+    // prompt — it makes the agent throw on every request. Refuse it at the
+    // boundary so the destructive row is never written.
+    it('rejects an empty instructions override for a code-defined agent (400)', async () => {
+      mockMastra = createMockMastra({
+        storage: mockStorage,
+        editor: mockEditor,
+        agents: { 'code-agent': { source: 'code' } },
+      });
+
+      try {
+        await CREATE_STORED_AGENT_ROUTE.handler({
+          ...createTestContext(mockMastra),
+          id: 'code-agent',
+          name: 'Code Agent',
+          instructions: [],
+          model: { name: 'gpt-4', provider: 'openai' },
+        });
+        expect.fail('Should have thrown HTTPException');
+      } catch (error) {
+        expect(error).toBeInstanceOf(HTTPException);
+        expect((error as HTTPException).status).toBe(400);
+        expect((error as HTTPException).message).toMatch(/instructions/i);
+      }
+      expect(mockAgentsStore.create).not.toHaveBeenCalled();
+    });
+
+    it('drops an empty instructions override the editor config does not own, instead of persisting it', async () => {
+      mockMastra = createMockMastra({
+        storage: mockStorage,
+        editor: mockEditor,
+        agents: {
+          'locked-instructions-agent': {
+            source: 'code',
+            __getEditorConfig: () => ({ tools: true }),
+          },
+        },
+      });
+
+      await CREATE_STORED_AGENT_ROUTE.handler({
+        ...createTestContext(mockMastra),
+        id: 'locked-instructions-agent',
+        name: 'Locked Agent',
+        instructions: [],
+        model: { name: 'gpt-4', provider: 'openai' },
+      });
+
+      expect(mockAgentsStore.create).toHaveBeenCalledWith({
+        agent: expect.objectContaining({ id: 'locked-instructions-agent', instructions: undefined }),
+      });
+    });
+
+    it('accepts an instructions override that carries a prompt', async () => {
+      mockMastra = createMockMastra({
+        storage: mockStorage,
+        editor: mockEditor,
+        agents: { 'code-agent-ok': { source: 'code' } },
+      });
+
+      await CREATE_STORED_AGENT_ROUTE.handler({
+        ...createTestContext(mockMastra),
+        id: 'code-agent-ok',
+        name: 'Code Agent',
+        instructions: [{ type: 'prompt_block', content: 'You are helpful.' }],
+        model: { name: 'gpt-4', provider: 'openai' },
+      });
+
+      expect(mockAgentsStore.create).toHaveBeenCalledWith({
+        agent: expect.objectContaining({
+          id: 'code-agent-ok',
+          instructions: [{ type: 'prompt_block', content: 'You are helpful.' }],
+        }),
+      });
+    });
   });
 
   describe('UPDATE_STORED_AGENT_ROUTE', () => {
+    it('rejects an empty instructions override for a code-defined agent (400)', async () => {
+      mockAgentsData.set('code-agent-update', {
+        id: 'code-agent-update',
+        name: 'Code Agent',
+        model: { name: 'gpt-4', provider: 'openai' },
+      });
+      mockMastra = createMockMastra({
+        storage: mockStorage,
+        editor: mockEditor,
+        agents: { 'code-agent-update': { source: 'code' } },
+      });
+
+      try {
+        await UPDATE_STORED_AGENT_ROUTE.handler({
+          ...createTestContext(mockMastra),
+          storedAgentId: 'code-agent-update',
+          instructions: [],
+        });
+        expect.fail('Should have thrown HTTPException');
+      } catch (error) {
+        expect(error).toBeInstanceOf(HTTPException);
+        expect((error as HTTPException).status).toBe(400);
+        expect((error as HTTPException).message).toMatch(/instructions/i);
+      }
+      expect(mockAgentsStore.update).not.toHaveBeenCalled();
+    });
+
     it.skip('should update an existing stored agent', async () => {
       mockAgentsData.set('update-test', {
         id: 'update-test',

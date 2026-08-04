@@ -16,7 +16,7 @@ import {
 
 import { CloudUpload, Link } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useComposerAddAttachment } from '../hooks/use-composer-add-attachment';
+import { reportAttachmentFailure, useComposerAddAttachment } from '../hooks/use-composer-add-attachment';
 
 export interface AttachFileDialogProps {
   onOpenChange: (open: boolean) => void;
@@ -46,7 +46,7 @@ export const AttachFileDialog = ({ onOpenChange, open }: AttachFileDialogProps) 
         type: await getFileContentType(url),
       });
 
-      void composerRuntime.addAttachment(file);
+      void composerRuntime.addAttachment(file).catch(error => reportAttachmentFailure(file, error));
       onOpenChange(false);
     }
   };

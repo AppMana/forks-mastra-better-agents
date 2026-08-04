@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { Memory } from '@mastra/memory';
-import { Agent } from '@mastra/core/agent';
+import { Agent, codeAgentEditorOwnership, storedInstructionsAreEmpty } from '@mastra/core/agent';
 import type { ToolsInput } from '@mastra/core/agent';
 import type { Mastra } from '@mastra/core';
 import { Workspace, CompositeVersionedSkillSource } from '@mastra/core/workspace';
@@ -355,11 +355,11 @@ export class EditorAgentNamespace extends CrudEditorNamespace<
       return agent;
     }
 
-    const instructionsEditable = editorConfig === undefined ? true : editorConfig.instructions === true;
-    const toolsConfig = editorConfig === undefined ? true : editorConfig.tools;
-    const toolsEditable = toolsConfig === true;
-    const toolDescriptionsEditable =
-      typeof toolsConfig === 'object' && toolsConfig !== null && toolsConfig.description === true;
+    const {
+      ownsInstructions: instructionsEditable,
+      ownsTools: toolsEditable,
+      ownsToolDescriptionsOnly: toolDescriptionsEditable,
+    } = codeAgentEditorOwnership(editorConfig);
 
     let storedConfig: StorageResolvedAgentType | null = null;
     try {
@@ -395,10 +395,35 @@ export class EditorAgentNamespace extends CrudEditorNamespace<
     this.logger?.debug(`[applyStoredOverrides] Applying stored overrides to code agent "${agent.id}"`);
 
     // --- Instructions ---
-    if (instructionsEditable && storedConfig.instructions !== undefined && storedConfig.instructions !== null) {
+    // The code definition is a floor the override can never go below. An agent
+    // whose instructions resolve to nothing throws on every single request, so
+    // one bad save would otherwise take a code-defined agent down permanently
+    // and there would be no way back through the product. Two guards: reject a
+    // statically empty override outright, and for block arrays (which can only
+    // be resolved at request time, since refs and rules depend on context) fall
+    // back to the code instructions whenever the resolution comes back blank.
+    if (
+      instructionsEditable &&
+      storedConfig.instructions !== undefined &&
+      storedConfig.instructions !== null &&
+      !storedInstructionsAreEmpty(storedConfig.instructions)
+    ) {
       const resolved = this.resolveStoredInstructions(storedConfig.instructions);
-      if (resolved !== undefined) {
+      if (typeof resolved === 'string') {
         fork.__updateInstructions(resolved);
+      } else if (resolved !== undefined) {
+        const codeInstructions = agent.getInstructions.bind(agent);
+        fork.__updateInstructions(async args => {
+          const stored = await resolved(args);
+          if (typeof stored === 'string' && stored.trim().length > 0) {
+            return stored;
+          }
+          this.logger?.warn(
+            `[applyStoredOverrides] Stored instructions for agent "${agent.id}" resolved to nothing; ` +
+              `keeping the code-defined instructions.`,
+          );
+          return codeInstructions({ requestContext: args.requestContext });
+        });
       }
     }
 

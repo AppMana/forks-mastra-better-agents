@@ -1,6 +1,6 @@
 import { coreFeatures } from '@mastra/core/features';
 import { MainContentLayout } from '@mastra/playground-ui';
-import { useParams, useLocation } from 'react-router';
+import { useParams, useLocation, useMatch } from 'react-router';
 import { AgentPageTabs } from '@/domains/agents/components/agent-page-tabs';
 import type { AgentPageTab } from '@/domains/agents/components/agent-page-tabs';
 import { AgentTopBarControls } from '@/domains/agents/components/agent-top-bar-controls';
@@ -42,7 +42,16 @@ export const AgentLayout = ({ children }: { children: React.ReactNode }) => {
           ? 'traces'
           : location.pathname.includes('/channels')
             ? 'channels'
-            : 'chat';
+            : location.pathname.includes('/workspace')
+              ? 'workspace'
+              : 'chat';
+
+  // Chat and Workspace show the same conversation, so whichever one we are on
+  // supplies the thread id the other tab links to. 'new' is not a thread.
+  const chatMatch = useMatch('/agents/:agentId/chat/:threadId');
+  const workspaceMatch = useMatch('/agents/:agentId/workspace/:threadId');
+  const routeThreadId = chatMatch?.params.threadId ?? workspaceMatch?.params.threadId;
+  const threadId = routeThreadId === 'new' ? undefined : routeThreadId;
 
   const showTopBarControls =
     (activeTab === 'versions' || activeTab === 'evaluate' || activeTab === 'review') &&
@@ -53,6 +62,7 @@ export const AgentLayout = ({ children }: { children: React.ReactNode }) => {
       <AgentPageTabs
         agentId={agentId!}
         activeTab={activeTab}
+        threadId={threadId}
         showPlayground={showPlayground}
         showObservability={showObservability}
         showChannels={hasChannels}

@@ -5,6 +5,7 @@ import { Workspace } from '@mastra/core/workspace';
 import type { WorkspaceFilesystem, FileEntry, FileStat } from '@mastra/core/workspace';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 
+import { MASTRA_RESOURCE_ID_KEY } from '../constants';
 import { HTTPException } from '../http-exception';
 import { createTestServerContext } from './test-utils';
 import {
@@ -2394,6 +2395,125 @@ describe('Workspace Handlers', () => {
       expect(result.updated).toHaveLength(1);
       expect(result.updated[0].success).toBe(false);
       expect(result.updated[0].error).toBe('No files found in skill directory');
+    });
+  });
+
+  // ===========================================================================
+  // Workspace ownership
+  //
+  // The registry is process-global but a workspace factory can build one
+  // workspace per caller, so an entry registered while serving one principal
+  // must be unreachable — not merely unlisted — from another principal.
+  // ===========================================================================
+  describe('workspace ownership', () => {
+    /** Server context for a caller an auth middleware mapped to `callerId`. */
+    function contextAs(mastra: Mastra, callerId?: string) {
+      const context = createTestServerContext({ mastra });
+      if (callerId) {
+        context.requestContext.set(MASTRA_RESOURCE_ID_KEY, callerId);
+      }
+      return context;
+    }
+
+    /** A deployment-owned workspace plus one owned by `principal-a`. */
+    function createOwnedAndSharedMastra() {
+      const shared = createWorkspace('shared-ws', { name: 'Shared' });
+      const owned = createWorkspace('owned-ws', {
+        name: 'Owned By A',
+        files: new Map([['/secret.txt', 'private']]),
+      });
+
+      const mastra = new Mastra({ logger: false });
+      mastra.addWorkspace(shared);
+      mastra.addWorkspace(owned, undefined, { owner: 'principal-a' });
+
+      return { mastra, shared, owned };
+    }
+
+    it('omits another principal owned workspace from the list but keeps unowned ones', async () => {
+      const { mastra } = createOwnedAndSharedMastra();
+
+      const result = await LIST_WORKSPACES_ROUTE.handler({
+        ...contextAs(mastra, 'principal-b'),
+      });
+
+      expect(result.workspaces.map((w: any) => w.id)).toEqual(['shared-ws']);
+    });
+
+    it('omits owned workspaces from an unauthenticated list', async () => {
+      const { mastra } = createOwnedAndSharedMastra();
+
+      const result = await LIST_WORKSPACES_ROUTE.handler({
+        ...contextAs(mastra),
+      });
+
+      expect(result.workspaces.map((w: any) => w.id)).toEqual(['shared-ws']);
+    });
+
+    it('lists an owned workspace back to its owner', async () => {
+      const { mastra } = createOwnedAndSharedMastra();
+
+      const result = await LIST_WORKSPACES_ROUTE.handler({
+        ...contextAs(mastra, 'principal-a'),
+      });
+
+      expect(result.workspaces.map((w: any) => w.id).sort()).toEqual(['owned-ws', 'shared-ws']);
+    });
+
+    it('answers GET /workspaces/:id for someone else workspace exactly as for an unknown id', async () => {
+      const { mastra } = createOwnedAndSharedMastra();
+
+      const otherPrincipal = await GET_WORKSPACE_ROUTE.handler({
+        ...contextAs(mastra, 'principal-b'),
+        workspaceId: 'owned-ws',
+      });
+      const unknownId = await GET_WORKSPACE_ROUTE.handler({
+        ...contextAs(mastra, 'principal-b'),
+        workspaceId: 'no-such-workspace',
+      });
+
+      expect(otherPrincipal).toEqual({ isWorkspaceConfigured: false });
+      expect(otherPrincipal).toEqual(unknownId);
+    });
+
+    it('still serves GET /workspaces/:id to the owner', async () => {
+      const { mastra } = createOwnedAndSharedMastra();
+
+      const result = await GET_WORKSPACE_ROUTE.handler({
+        ...contextAs(mastra, 'principal-a'),
+        workspaceId: 'owned-ws',
+      });
+
+      expect(result).toMatchObject({ isWorkspaceConfigured: true, id: 'owned-ws' });
+    });
+
+    it('does not read another principal files through fs/list', async () => {
+      const { mastra, owned } = createOwnedAndSharedMastra();
+      const readdir = owned.filesystem!.readdir as ReturnType<typeof vi.fn>;
+
+      const result = await WORKSPACE_FS_LIST_ROUTE.handler({
+        ...contextAs(mastra, 'principal-b'),
+        workspaceId: 'owned-ws',
+        path: '/',
+      });
+
+      expect(result.entries).toEqual([]);
+      expect(result.error).toBe('No workspace filesystem configured');
+      expect(readdir).not.toHaveBeenCalled();
+    });
+
+    it('serves fs/list to the owner', async () => {
+      const { mastra, owned } = createOwnedAndSharedMastra();
+      const readdir = owned.filesystem!.readdir as ReturnType<typeof vi.fn>;
+
+      const result = await WORKSPACE_FS_LIST_ROUTE.handler({
+        ...contextAs(mastra, 'principal-a'),
+        workspaceId: 'owned-ws',
+        path: '/',
+      });
+
+      expect(result.error).toBeUndefined();
+      expect(readdir).toHaveBeenCalled();
     });
   });
 });
