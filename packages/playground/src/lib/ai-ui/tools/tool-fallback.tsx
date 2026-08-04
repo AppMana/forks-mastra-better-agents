@@ -5,6 +5,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { AgentBadgeWrapper } from './badges/agent-badge-wrapper';
 import { CodeModeBadge, getCodeModeCall } from './badges/code-mode-badge';
+import { isFileContentTool } from './badges/file-content';
+import { FileContentBadge } from './badges/file-content-badge';
 import { FileTreeBadge } from './badges/file-tree-badge';
 import { ObservationMarkerBadge } from './badges/observation-marker-badge';
 import { SandboxExecutionBadge } from './badges/sandbox-execution-badge';
@@ -216,6 +218,23 @@ const ToolFallbackInner = ({ toolName, result, args, metadata, toolCallId, ...pr
         toolCallId={toolCallId}
         toolApprovalMetadata={toolApprovalMetadata}
         isNetwork={isNetwork ?? false}
+        toolCalled={toolCalled}
+      />
+    );
+  }
+
+  // File tools show the file, not a JSON tool call: the content streams into
+  // the same bounded preview the terminal uses.
+  if (isFileContentTool(toolName)) {
+    return (
+      <FileContentBadge
+        toolName={toolName}
+        args={args}
+        result={result}
+        metadata={metadata}
+        toolCallId={toolCallId}
+        toolApprovalMetadata={toolApprovalMetadata}
+        isNetwork={isNetwork}
         toolCalled={toolCalled}
       />
     );
