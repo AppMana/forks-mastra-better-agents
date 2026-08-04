@@ -134,7 +134,10 @@ function memoryMetadataTests(version: 'v1' | 'v2') {
 
       const thread = await mockMemory.getThreadById({ threadId: 'thread-1' });
       expect(thread).toBeDefined();
-      expect(thread?.metadata).toEqual({ client: 'test' });
+      // `agentId` alongside the caller's metadata: a thread row has no agent
+      // column, so this is what lets a client list one agent's chats rather
+      // than every chat the resource owns.
+      expect(thread?.metadata).toEqual({ client: 'test', agentId: 'test-agent' });
       expect(thread?.resourceId).toBe('user-1');
     });
 
@@ -314,7 +317,7 @@ function memoryMetadataTests(version: 'v1' | 'v2') {
 
       const thread = await mockMemory.getThreadById({ threadId: 'thread-1' });
       expect(thread).toBeDefined();
-      expect(thread?.metadata).toEqual({ client: 'test-stream' });
+      expect(thread?.metadata).toEqual({ client: 'test-stream', agentId: 'test-agent' });
       expect(thread?.resourceId).toBe('user-1');
     });
 

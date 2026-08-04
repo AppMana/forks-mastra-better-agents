@@ -411,7 +411,10 @@ export class AgentLegacyHandler {
           // validate that the thread exists before saving messages.
           threadObject = await memory.createThread({
             threadId,
-            metadata: thread.metadata,
+            // Which agent this conversation is with. Thread rows are keyed on
+            // resourceId alone, so where resourceId identifies the user this is
+            // the only thing keeping one agent's chats out of another's list.
+            metadata: { agentId: this.capabilities.id, ...thread.metadata },
             title: thread.title,
             memoryConfig,
             resourceId,
@@ -581,7 +584,7 @@ export class AgentLegacyHandler {
             if (!threadExists) {
               await memory.createThread({
                 threadId: thread.id,
-                metadata: thread.metadata,
+                metadata: { agentId: this.capabilities.id, ...thread.metadata },
                 title: thread.title,
                 memoryConfig,
                 resourceId: thread.resourceId,
@@ -622,7 +625,8 @@ export class AgentLegacyHandler {
                           resourceId,
                           memoryConfig,
                           title,
-                          metadata: thread.metadata,
+                          // Upserts, so it must preserve the agent scoping.
+                          metadata: { agentId: this.capabilities.id, ...thread.metadata },
                         });
                       }
                     }),
@@ -867,7 +871,7 @@ export class AgentLegacyHandler {
                 await memory.createThread({
                   threadId,
                   title: thread.title,
-                  metadata: thread.metadata,
+                  metadata: { agentId: this.capabilities.id, ...thread.metadata },
                   resourceId: thread.resourceId,
                   memoryConfig,
                 });
