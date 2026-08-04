@@ -35,8 +35,16 @@ import {
 
 /** The single uploads top. Mirrors WORKSPACE_UPLOAD_DIRECTORY (workspace-upload.ts). */
 const UPLOADS_DIRECTORY = 'uploads';
-/** Where a sandbox mounts the workspace. Mirrors WORKSPACE_SANDBOX_ROOT (workspace-upload.ts). */
-const WORKSPACE_ROOT = '/workspace';
+/**
+ * The uploads top is addressed ABSOLUTELY, with no workspace-root prefix.
+ *
+ * `WORKSPACE_SANDBOX_ROOT` ('/workspace') is only the fallback root, used when
+ * a deployment has no upload route and the file goes through the workspace
+ * file API instead. Where the upload route exists — which is what these live
+ * tests exercise — it returns the path itself and the notice root is empty, so
+ * the announced path is `/uploads/<name>`. Asserting the fallback here made
+ * these specs disagree with the server they were testing.
+ */
 
 /** A 1x1 red pixel — a real, decodable PNG, small enough to inline. */
 const TINY_PNG = Buffer.from(
@@ -48,7 +56,7 @@ const TINY_PNG = Buffer.from(
 const uniqueName = (label: string, extension: string) =>
   `upload e2e ${label} (${Date.now().toString(36)}).${extension}`;
 
-const announcedPathFor = (fileName: string) => `${WORKSPACE_ROOT}/${UPLOADS_DIRECTORY}/${fileName}`;
+const announcedPathFor = (fileName: string) => `/${UPLOADS_DIRECTORY}/${fileName}`;
 
 /** Attach a file through the composer's "+" dialog, as a user would. */
 async function attachThroughPlusButton(
