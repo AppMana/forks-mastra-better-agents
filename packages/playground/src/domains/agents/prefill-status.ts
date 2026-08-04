@@ -82,17 +82,28 @@ export function prefillTokens(slot: PrefillSlot): number {
   return counted > 0 ? counted : slot.contextUsed;
 }
 
-/** How full the context window is, or null when the backend omits `n_ctx`. */
-export function prefillPercent(tokens: number, contextSize: number): number | null {
+/**
+ * How full the context window is — NOT how far through the prompt we are.
+ *
+ * Kept separate from progress on purpose. The context window is capacity, not
+ * a target: a 10k prompt in a 147k window is 7% full and then finishes, which
+ * as a progress bar means "almost nothing happened" right up until it is done.
+ */
+export function contextFillPercent(tokens: number, contextSize: number): number | null {
   if (contextSize <= 0 || tokens <= 0) return null;
   return Math.min(100, Math.round((tokens / contextSize) * 100));
 }
 
-function prefillLabel(tokens: number, contextSize: number): string {
+/**
+ * The server reports how much prompt it has accounted for, but never how much
+ * there is in total: `n_prompt_tokens` equals cached + processed, so it climbs
+ * alongside them rather than standing still as a target. So report the count
+ * that is real and leave the proportion out. Naming the context window as the
+ * denominator read as "this prompt is 147,456 tokens", which it never was.
+ */
+function prefillLabel(tokens: number): string {
   if (tokens <= 0) return 'Reading your prompt…';
-  const read = tokens.toLocaleString('en-US');
-  if (contextSize <= 0) return `Reading your prompt… ${read} tokens`;
-  return `Reading your prompt… ${read} of ${contextSize.toLocaleString('en-US')} context tokens`;
+  return `Reading your prompt… ${tokens.toLocaleString('en-US')} tokens read`;
 }
 
 /**
@@ -143,9 +154,11 @@ export function advancePrefill(
     tracker: next,
     progress: {
       phase: stalled ? 'stalled' : 'prefilling',
-      label: stalled ? 'Still reading your prompt…' : prefillLabel(tokens, slot.contextSize),
+      label: stalled ? 'Still reading your prompt…' : prefillLabel(tokens),
       hint: stalled ? STALL_HINT : PREFILL_HINT,
-      percent: stalled ? null : prefillPercent(tokens, slot.contextSize),
+      // Indeterminate: the total is unknown, so a filling bar would be a
+      // guess. The token count in the label is what actually moves.
+      percent: null,
       tokens,
       contextSize: slot.contextSize,
     },

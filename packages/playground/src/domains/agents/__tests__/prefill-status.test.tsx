@@ -10,7 +10,7 @@ import {
   fetchPrefillSlots,
   IDLE_PREFILL_TRACKER,
   PREFILL_STALL_AFTER_MS,
-  prefillPercent,
+  contextFillPercent,
   prefillStatusUrl,
 } from '../prefill-status';
 import type { PrefillSlot } from '../prefill-status';
@@ -51,14 +51,14 @@ describe('activePrefillSlot', () => {
   });
 });
 
-describe('prefillPercent', () => {
-  it('measures the prompt against the context window', () => {
-    expect(prefillPercent(22488, 147456)).toBe(15);
+describe('contextFillPercent', () => {
+  it('measures how full the context window is, which is capacity and not progress', () => {
+    expect(contextFillPercent(22488, 147456)).toBe(15);
   });
 
   it('is unknown without a context window or without tokens', () => {
-    expect(prefillPercent(22488, 0)).toBeNull();
-    expect(prefillPercent(0, 147456)).toBeNull();
+    expect(contextFillPercent(22488, 0)).toBeNull();
+    expect(contextFillPercent(0, 147456)).toBeNull();
   });
 });
 
@@ -70,20 +70,23 @@ describe('advancePrefill', () => {
     expect(progress.percent).toBeNull();
   });
 
-  it('reports prefilling with counts against the context window', () => {
+  it('reports how many prompt tokens have been read, with no invented total', () => {
     const progress = progressOf([slot()]);
     expect(progress.phase).toBe('prefilling');
-    expect(progress.label).toBe('Reading your prompt… 22,488 of 147,456 context tokens');
-    expect(progress.percent).toBe(15);
+    expect(progress.label).toBe('Reading your prompt… 22,488 tokens read');
+    // The context window is capacity, not a target. Naming it as the
+    // denominator read as "this prompt is 147,456 tokens", which it never was.
+    expect(progress.label).not.toContain('147,456');
+    expect(progress.percent).toBeNull();
   });
 
   it('counts the cached prefix as already read', () => {
     expect(progressOf([slot({ promptCached: 82268, promptProcessed: 1592, contextUsed: 83860 })]).tokens).toBe(83860);
   });
 
-  it('degrades to a count-only label when the context window is unknown', () => {
+  it('reads the same whether or not the backend reports a context window', () => {
     const progress = progressOf([slot({ contextSize: 0 })]);
-    expect(progress.label).toBe('Reading your prompt… 22,488 tokens');
+    expect(progress.label).toBe('Reading your prompt… 22,488 tokens read');
     expect(progress.percent).toBeNull();
   });
 
@@ -143,11 +146,11 @@ describe('PrefillIndicatorView', () => {
     expect(screen.queryByTestId('prefill-progress')).toBeNull();
   });
 
-  it('shows the label, the percentage and a determinate bar', () => {
+  it('shows the running token count and an indeterminate bar', () => {
     render(<PrefillIndicatorView progress={progressOf([slot()])} />);
-    expect(screen.getByText('Reading your prompt… 22,488 of 147,456 context tokens')).toBeTruthy();
-    expect(screen.getByText('15%')).toBeTruthy();
-    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('15');
+    expect(screen.getByText('Reading your prompt… 22,488 tokens read')).toBeTruthy();
+    // No percentage: the total is unknown, so a filling bar would be a guess.
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBeNull();
   });
 
   it('renders an indeterminate bar when the context window is unknown', () => {
@@ -165,7 +168,7 @@ describe('PrefillIndicator', () => {
     expect(screen.getByTestId('prefill-progress').getAttribute('data-phase')).toBe('queued');
 
     await waitFor(() => expect(screen.getByTestId('prefill-progress').getAttribute('data-phase')).toBe('prefilling'));
-    expect(screen.getByText('Reading your prompt… 22,488 of 147,456 context tokens')).toBeTruthy();
+    expect(screen.getByText('Reading your prompt… 22,488 tokens read')).toBeTruthy();
   });
 
   it('stays queued when the backend reports no busy slot', async () => {
