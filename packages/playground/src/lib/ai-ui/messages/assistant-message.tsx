@@ -6,8 +6,10 @@ import { ToolFallback } from '../tools/tool-fallback';
 import { AttachedFileDataPart } from './attached-file';
 import { ATTACHMENT_PART_NAME } from './attachment-data';
 import { ErrorAwareText } from './error-aware-text';
+import { groupPartsIntoRuns } from './part-runs';
 import { Reasoning } from './reasoning';
 import { SignalDataPart } from './signal-badge';
+import { PartRunGroup } from './tool-icon-row';
 import { ProviderLogo } from '@/domains/agents/components/agent-metadata/provider-logo';
 
 /**
@@ -45,7 +47,11 @@ export const AssistantMessage = ({ hasModelList }: AssistantMessageProps) => {
   return (
     <MessagePrimitive.Root className="max-w-full" data-message-id={messageId} data-message-index={data.index}>
       <div className="text-neutral6 text-ui-lg leading-ui-lg pt-2">
-        <MessagePrimitive.Parts
+        <MessagePrimitive.Unstable_PartsGrouped
+          // Contiguous tool-call/reasoning parts coalesce into one run and
+          // render as a compact icon row (PartRunGroup); text and data parts
+          // break runs and render ungrouped, exactly as before.
+          groupingFunction={groupPartsIntoRuns}
           components={{
             Text: ErrorAwareText,
             tools: { Fallback: ToolFallback },
@@ -54,6 +60,7 @@ export const AssistantMessage = ({ hasModelList }: AssistantMessageProps) => {
             // strips the prefix). There is no auto-discovery: a data part with no
             // entry in this map renders nothing at all.
             data: { by_name: { signal: SignalDataPart, [ATTACHMENT_PART_NAME]: AttachedFileDataPart } },
+            Group: PartRunGroup,
           }}
         />
       </div>
