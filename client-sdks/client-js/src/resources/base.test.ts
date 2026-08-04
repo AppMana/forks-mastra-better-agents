@@ -131,4 +131,54 @@ describe('BaseResource', () => {
     // Assert: Verify request succeeded using global fetch
     expect(result).toEqual({ success: true });
   });
+
+  /**
+   * A 2xx is not a promise of a JSON body. Middleware that fails to finalize a
+   * response (Hono's `bodyLimit` with a mis-typed `onError` did exactly this on
+   * over-limit uploads) answers 200 with zero bytes, and an unguarded
+   * `response.json()` then surfaces "Unexpected end of JSON input" — a parser
+   * complaint that names neither the endpoint nor the real problem. The
+   * transport has to report what actually happened instead.
+   */
+  describe('non-JSON success responses', () => {
+    it('reports an empty 2xx body as an empty response, not a JSON parse error', async () => {
+      server.on('request', (_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end();
+      });
+
+      await expect(resource.request('/test')).rejects.toThrow(/empty response/i);
+    });
+
+    it('names the status and the endpoint so the failure is attributable', async () => {
+      server.on('request', (_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end();
+      });
+
+      await expect(resource.request('/test')).rejects.toThrow(/\/api\/test/);
+    });
+
+    it('surfaces a non-JSON 2xx body rather than a parser message', async () => {
+      server.on('request', (_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html>proxy error</html>');
+      });
+
+      const error = await resource.request('/test').catch((e: Error) => e);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain('proxy error');
+      expect((error as Error).message).not.toMatch(/Unexpected end of JSON input/);
+    });
+
+    it('still returns a parsed body for a normal 204 with no content', async () => {
+      server.on('request', (_req, res) => {
+        res.writeHead(204);
+        res.end();
+      });
+
+      await expect(resource.request('/test')).resolves.toBeUndefined();
+    });
+  });
 });

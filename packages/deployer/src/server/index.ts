@@ -172,9 +172,21 @@ export async function createHonoServer(
   });
 
   // Define body limit options
+  const maxBodySize = server?.bodySizeLimit ?? 4.5 * 1024 * 1024; // 4.5 MB
   const bodyLimitOptions = {
-    maxSize: server?.bodySizeLimit ?? 4.5 * 1024 * 1024, // 4.5 MB,
-    onError: () => ({ error: 'Request body too large' }),
+    maxSize: maxBodySize,
+    // Must be a real Response: adapters send this verbatim, and returning a
+    // plain object left Hono with nothing to finalize, so an over-limit upload
+    // came back as an empty `200 OK`. State the limit so a caller can act on
+    // it — it is raised with `server.bodySizeLimit`.
+    onError: () =>
+      Response.json(
+        {
+          error: `Request body too large. The maximum accepted request body is ${maxBodySize} bytes; raise it with the server's bodySizeLimit option.`,
+          maxSize: maxBodySize,
+        },
+        { status: 413 },
+      ),
   };
 
   // Create server adapter with all configuration

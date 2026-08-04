@@ -47,7 +47,12 @@ export interface OpenAPIConfig {
 
 export interface BodyLimitOptions {
   maxSize: number;
-  onError: (error: unknown) => unknown;
+  /**
+   * Builds the over-limit response. Adapters send whatever this returns, so it
+   * has to be a real `Response` — returning a plain object made Hono finalize
+   * no body at all and answer `200 OK`, hiding the limit from every client.
+   */
+  onError: (context: unknown) => Response | Promise<Response>;
 }
 
 export interface StreamOptions {

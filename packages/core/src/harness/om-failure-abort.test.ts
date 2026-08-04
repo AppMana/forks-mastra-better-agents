@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Agent } from '../agent';
 import { InMemoryStore } from '../storage/mock';
 import { Harness } from './harness';
@@ -18,8 +18,23 @@ function createHarness() {
   });
 }
 
-describe('Harness OM failure abort behavior', () => {
-  it('aborts stream and emits an error when OM buffering fails', async () => {
+/**
+ * Observational memory compacts context; it never produces the user-visible
+ * answer. A failed observation/buffering pass therefore degrades the turn to
+ * un-compacted context and must not abort the in-flight run.
+ */
+describe('Harness OM failure degradation', () => {
+  let warn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  it('keeps streaming when OM buffering fails', async () => {
     const harness = createHarness();
     const events: HarnessEvent[] = [];
     harness.subscribe(event => events.push(event));
@@ -37,22 +52,21 @@ describe('Harness OM failure abort behavior', () => {
           },
         };
         yield { type: 'text-start', payload: { id: 't1' } };
+        yield { type: 'text-delta', payload: { id: 't1', text: 'hello' } };
       })(),
     });
 
+    // The failure is still reported so consumers can render a warning badge.
     expect(events.some(e => e.type === 'om_buffering_failed')).toBe(true);
-    const errorEvent = events.find(e => e.type === 'error');
-    expect(errorEvent?.type).toBe('error');
-    expect((errorEvent as Extract<HarnessEvent, { type: 'error' }>).error.message).toContain(
-      'Observational memory observation buffering failed: Bad Request',
-    );
-    expect(events.some(e => e.type === 'agent_end' && e.reason === 'aborted')).toBe(true);
-    expect((harness as any).abortRequested).toBe(false);
-    expect((harness as any).abortController).toBeNull();
-    expect(events.some(e => e.type === 'message_start')).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Observational memory observation buffering failed'));
+
+    // ...but the run is not killed.
+    expect(events.some(e => e.type === 'error')).toBe(false);
+    expect(events.some(e => e.type === 'agent_end' && e.reason === 'aborted')).toBe(false);
+    expect(events.some(e => e.type === 'message_start')).toBe(true);
   });
 
-  it('aborts stream and emits an error when OM observation run fails', async () => {
+  it('keeps streaming when an OM observation run fails', async () => {
     const harness = createHarness();
     const events: HarnessEvent[] = [];
     harness.subscribe(event => events.push(event));
@@ -71,17 +85,15 @@ describe('Harness OM failure abort behavior', () => {
           },
         };
         yield { type: 'text-start', payload: { id: 't2' } };
+        yield { type: 'text-delta', payload: { id: 't2', text: 'hello' } };
       })(),
     });
 
     expect(events.some(e => e.type === 'om_reflection_failed')).toBe(true);
-    const errorEvent = events.find(e => e.type === 'error');
-    expect(errorEvent?.type).toBe('error');
-    expect((errorEvent as Extract<HarnessEvent, { type: 'error' }>).error.message).toContain(
-      'Observational memory reflection run failed: Model unavailable',
-    );
-    expect(events.some(e => e.type === 'agent_end' && e.reason === 'aborted')).toBe(true);
-    expect((harness as any).abortRequested).toBe(false);
-    expect(events.some(e => e.type === 'message_start')).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Observational memory reflection run failed'));
+
+    expect(events.some(e => e.type === 'error')).toBe(false);
+    expect(events.some(e => e.type === 'agent_end' && e.reason === 'aborted')).toBe(false);
+    expect(events.some(e => e.type === 'message_start')).toBe(true);
   });
 });

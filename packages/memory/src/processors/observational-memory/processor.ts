@@ -5,7 +5,7 @@ import type { Processor, ProcessInputStepArgs, ProcessOutputResultArgs } from '@
 import type { ObservationalMemoryRecord } from '@mastra/core/storage';
 
 import { OBSERVATION_CONTINUATION_HINT } from './constants';
-import { omDebug } from './debug';
+import { omDebug, omError } from './debug';
 import type { ObservationTurn } from './observation-turn/index';
 import { loadMemoryContextMessages } from './observation-turn/load-memory-context';
 import type { ObservationalMemory } from './observational-memory';
@@ -267,15 +267,31 @@ export class ObservationalMemoryProcessor implements Processor<'observational-me
         try {
           ctx = await step.prepare();
         } catch (error) {
-          // Map observation errors through abort (processor-specific concern)
           const err = error instanceof Error ? error : new Error(String(error));
-          const abortMessage = abortSignal?.aborted
-            ? 'Agent execution was aborted'
-            : `Encountered error during memory observation: ${err.message}`;
-          if (typeof abort === 'function') {
-            abort(abortMessage);
+
+          // A real cancellation still aborts — the caller asked us to stop.
+          if (abortSignal?.aborted) {
+            if (typeof abort === 'function') {
+              abort('Agent execution was aborted');
+            }
+            throw err;
           }
-          throw err;
+
+          // Otherwise the observation pass failed on its own (observer model
+          // error, storage hiccup, oversized request...). Compaction is an
+          // optimization, never a correctness requirement: degrade to the
+          // un-compacted context and let the turn continue rather than killing
+          // the user's run. The next step retries observation from scratch.
+          // The failing strategy already emitted a `data-om-observation-failed`
+          // marker, so the failure stays visible to the UI as a warning badge.
+          const warning = `Observational memory pass failed — continuing with un-compacted context: ${err.message}`;
+          omError('[OM] Observation pass failed — continuing with un-compacted context', err);
+          if (args.loggerVNext) {
+            args.loggerVNext.warn(warning);
+          } else {
+            console.warn(`[ObservationalMemory] ${warning}`);
+          }
+          return messageList;
         }
 
         // Inject system messages (one per cache-stable chunk) + continuation

@@ -393,10 +393,24 @@ export class MastraServer extends MastraServerBase<HonoApp, HonoRequest, Context
     const middlewares: MiddlewareHandler[] = [];
 
     if (shouldApplyBodyLimit && maxSize && this.bodyLimitOptions) {
+      const onError = this.bodyLimitOptions.onError;
       middlewares.push(
         bodyLimit({
           maxSize,
-          onError: this.bodyLimitOptions.onError as any,
+          // Hono uses whatever `onError` returns as the response, and silently
+          // finalizes nothing when that is not a `Response` — an over-limit
+          // request then answers `200 OK` with an empty body, which every
+          // client reads as a JSON parse error rather than "too large".
+          // Normalize the result so the limit is always reported as a 413.
+          onError: async c => {
+            const result = await onError(c);
+            if (result instanceof Response) {
+              return result;
+            }
+            return Response.json(result && typeof result === 'object' ? result : { error: 'Request body too large' }, {
+              status: 413,
+            });
+          },
         }),
       );
     }

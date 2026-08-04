@@ -15045,7 +15045,7 @@ describe('Processor behavioral regressions', () => {
   // was replaced with message-level flag checking (metadata.mastra.sealed). Storage adapters
   // handle dedup via upserts (INSERT ON CONFLICT DO UPDATE).
 
-  it('should map threshold observation errors through abort instead of bubbling raw errors', async () => {
+  it('should degrade to un-compacted context instead of aborting when threshold observation fails', async () => {
     const { MessageList } = await import('@mastra/core/agent');
     const { RequestContext } = await import('@mastra/core/di');
 
@@ -15118,7 +15118,9 @@ describe('Processor behavioral regressions', () => {
     }) as any;
 
     try {
-      await processor.processInputStep({
+      // A failing observation pass is not fatal: the processor returns the
+      // un-compacted MessageList so the agent's turn can continue.
+      const result = await processor.processInputStep({
         messageList,
         messages: [],
         requestContext: ctx,
@@ -15130,11 +15132,9 @@ describe('Processor behavioral regressions', () => {
         retryCount: 0,
         abort,
       });
-      throw new Error('expected abort to throw');
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      expect(msg).toContain('abort-called:');
-      expect(abortCalled).toBe(true);
+
+      expect(result).toBe(messageList);
+      expect(abortCalled).toBe(false);
     } finally {
       engine.observe = originalObserve;
     }
@@ -16925,7 +16925,8 @@ describe('Message ordering regressions', () => {
       abort,
     });
 
-    // Step 1: threshold exceeded → sync observation fires → model throws → abort
+    // Step 1: threshold exceeded → sync observation fires → model throws →
+    // the step degrades to un-compacted context instead of aborting the turn.
     await expect(
       processor.processInputStep({
         messageList: ml,
@@ -16940,7 +16941,7 @@ describe('Message ordering regressions', () => {
         writer: mockWriter as any,
         abort,
       }),
-    ).rejects.toThrow();
+    ).resolves.toBe(ml);
 
     // Despite observation failure, all previously persisted messages must survive
     result = await storage.listMessages({

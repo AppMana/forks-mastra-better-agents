@@ -2507,12 +2507,17 @@ export class Harness<TState = {}> {
     };
   }
 
-  private abortForOmFailure({ operationType, stage, error }: { operationType: string; stage: string; error: string }) {
-    this.emit({
-      type: 'error',
-      error: new Error(`Observational memory ${operationType} ${stage} failed: ${error}`),
-    });
-    this.abort();
+  /**
+   * Observational memory failures are non-fatal: compaction is an optimization
+   * on top of the conversation, so a failed pass degrades to un-compacted
+   * context instead of killing the in-flight turn. The failure is surfaced as a
+   * warning (and as an `om_*_failed` event consumers can render) rather than an
+   * `error` event, which would abort the stream.
+   */
+  private warnOmFailure({ operationType, stage, error }: { operationType: string; stage: string; error: string }) {
+    console.warn(
+      `[Harness] Observational memory ${operationType} ${stage} failed: ${error}. Continuing with un-compacted context.`,
+    );
   }
 
   private async processStream(
@@ -2932,8 +2937,11 @@ export class Harness<TState = {}> {
             });
           }
 
-          this.abortForOmFailure({ operationType, stage: 'run', error });
-          return { message: state.currentMessage };
+          // Observation is a context-compaction optimization, not a
+          // correctness requirement. A failed pass degrades the turn to
+          // un-compacted context — it must never abort the user's run. The
+          // emitted `om_*_failed` event is the warning surface.
+          this.warnOmFailure({ operationType, stage: 'run', error });
         }
         break;
       }
@@ -2977,8 +2985,10 @@ export class Harness<TState = {}> {
             error,
           });
 
-          this.abortForOmFailure({ operationType, stage: 'buffering', error });
-          return { message: state.currentMessage };
+          // Buffering is fire-and-forget background work (see
+          // ObservationStep.prepare) — a failure leaves the context
+          // un-compacted but the turn is otherwise unaffected.
+          this.warnOmFailure({ operationType, stage: 'buffering', error });
         }
         break;
       }

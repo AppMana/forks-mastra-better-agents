@@ -355,11 +355,10 @@ describe('OM Error State', { timeout: 30_000 }, () => {
     });
   });
 
-  it('should return empty text when observer fails', async () => {
-    // When observation fails, OM calls abort() which triggers a TripWire.
-    // The agent architecture converts TripWire to a successful result with empty text,
-    // not a thrown error. This is by design - the tripwire mechanism returns early
-    // with empty text rather than propagating the error.
+  it('should still answer when observer fails', async () => {
+    // Observation compacts context; it never produces the answer. A failing
+    // observer therefore degrades the turn to un-compacted context instead of
+    // aborting it, so the user still gets a response.
     const result = await agent.generate('Hello, I need help.', {
       memory: {
         thread: 'test-error-thread',
@@ -367,15 +366,11 @@ describe('OM Error State', { timeout: 30_000 }, () => {
       },
     });
 
-    // Agent returns empty text when tripwire is triggered (observation failure)
-    expect(result.text).toBe('');
-    expect(result.tripwire).toBeDefined();
-    expect(result.tripwire?.reason).toContain('Encountered error during memory observation');
+    expect(result.tripwire).toBeUndefined();
+    expect(result.text.length).toBeGreaterThan(0);
   });
 
-  it('should emit tripwire in response when observer fails during streaming', async () => {
-    // When observation fails, OM calls abort() which triggers a TripWire.
-    // The stream completes with a tripwire part, not an error throw.
+  it('should keep streaming text when observer fails during streaming', async () => {
     const response = await agent.stream('Hello, I need help.', {
       memory: {
         thread: 'test-error-stream',
@@ -394,26 +389,23 @@ describe('OM Error State', { timeout: 30_000 }, () => {
 
         if (value.type === 'tripwire') {
           tripwireEmitted = true;
-          expect(value.payload?.reason).toBeDefined();
-          expect(value.payload?.reason).toContain('Encountered error during memory observation');
         }
         if (value.type === 'text-delta') {
-          textContent += (value as any).delta || (value.payload as any)?.delta || '';
+          textContent += (value as any).delta || (value.payload as any)?.delta || (value.payload as any)?.text || '';
         }
       }
     } finally {
       reader.releaseLock();
     }
 
-    // Tripwire should be emitted in the stream
-    expect(tripwireEmitted).toBe(true);
-    // Text content should be empty when tripwire is triggered
-    expect(textContent).toBe('');
+    expect(tripwireEmitted).toBe(false);
+    expect(textContent.length).toBeGreaterThan(0);
   });
 
-  it('should emit tripwire when observer fails and persist lifecycle marker parts through OM', async () => {
-    // When observation fails, OM calls abort() which triggers a TripWire.
-    // The stream completes with a tripwire part, not an error throw.
+  it('should stream lifecycle markers and still persist the answer when the observer fails', async () => {
+    // The failure is surfaced to the client as a `data-om-observation-failed`
+    // marker (the warning), and the turn goes on to produce and persist a real
+    // assistant answer on un-compacted context.
     const threadId = 'test-error-persist';
     const resourceId = 'test-resource';
 
@@ -426,11 +418,13 @@ describe('OM Error State', { timeout: 30_000 }, () => {
 
     const reader = response.fullStream.getReader();
     let tripwireEmitted = false;
+    const streamedTypes: string[] = [];
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
+        streamedTypes.push(value.type);
         if (value.type === 'tripwire') {
           tripwireEmitted = true;
         }
@@ -439,21 +433,21 @@ describe('OM Error State', { timeout: 30_000 }, () => {
       reader.releaseLock();
     }
 
-    // Tripwire should be emitted (not an error thrown)
-    expect(tripwireEmitted).toBe(true);
+    // The turn survives the observation failure...
+    expect(tripwireEmitted).toBe(false);
+    // ...but the failure is still announced on the stream.
+    expect(streamedTypes).toEqual(expect.arrayContaining(['data-om-observation-start', 'data-om-observation-failed']));
 
+    // And the un-compacted turn produced a persisted assistant answer.
     const memoryStore = await store.getStore('memory');
     const result = await memoryStore!.listMessages({ threadId });
-    const persistedObservationMarkerParts = result.messages.flatMap((message: any) => {
-      const parts = message.content?.parts || [];
-      return parts.filter(
-        (part: any) => typeof part.type === 'string' && /^data-om-(observation|reflection)-/.test(part.type),
-      );
-    });
-
-    expect(persistedObservationMarkerParts.map((part: any) => part.type)).toEqual(
-      expect.arrayContaining(['data-om-observation-start', 'data-om-observation-failed']),
-    );
+    const assistantText = result.messages
+      .filter((message: any) => message.role === 'assistant')
+      .flatMap((message: any) => message.content?.parts ?? [])
+      .filter((part: any) => part?.type === 'text')
+      .map((part: any) => part.text)
+      .join('');
+    expect(assistantText.length).toBeGreaterThan(0);
   });
 });
 
