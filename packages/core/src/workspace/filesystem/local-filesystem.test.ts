@@ -571,6 +571,47 @@ describe('LocalFilesystem', () => {
       await expect(localFs.readFile('/../etc/passwd')).rejects.not.toThrow(/"\.\.\//);
     });
 
+    it('should block creating a new file through a symlinked directory', async () => {
+      // Reading or overwriting through an escaping symlink is already blocked,
+      // because realpath resolves to the outside target. Creating a file that
+      // does not exist yet was not: realpath threw ENOENT and the check treated
+      // "no such path" as "nothing to escape through", without ever looking at
+      // the parent. The write then landed outside the workspace.
+      const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'escape-target-'));
+      try {
+        await fs.symlink(outsideDir, path.join(tempDir, 'escape-link'));
+
+        await expect(localFs.writeFile('escape-link/planted.txt', 'nope')).rejects.toThrow(PermissionError);
+        await expect(fs.readFile(path.join(outsideDir, 'planted.txt'))).rejects.toThrow();
+      } finally {
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should still allow creating a new file under a symlink that stays inside', async () => {
+      // The parent check must not become "any symlink is forbidden": a link
+      // pointing back into the workspace resolves inside it and is fine.
+      await fs.mkdir(path.join(tempDir, 'real-dir'));
+      await fs.symlink(path.join(tempDir, 'real-dir'), path.join(tempDir, 'inside-link'));
+
+      await localFs.writeFile('inside-link/ok.txt', 'fine');
+
+      const written = await fs.readFile(path.join(tempDir, 'real-dir', 'ok.txt'), 'utf-8');
+      expect(written).toBe('fine');
+    });
+
+    it('should block creating a file several levels below an escaping symlink', async () => {
+      // The nearest existing ancestor may be well above the target path.
+      const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'escape-deep-'));
+      try {
+        await fs.symlink(outsideDir, path.join(tempDir, 'deep-link'));
+
+        await expect(localFs.writeFile('deep-link/a/b/c.txt', 'nope')).rejects.toThrow(PermissionError);
+      } finally {
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+
     it('should not treat absolute paths as workspace-relative (no virtual root)', async () => {
       // Write a file via relative path
       await localFs.writeFile('test.txt', 'relative content');

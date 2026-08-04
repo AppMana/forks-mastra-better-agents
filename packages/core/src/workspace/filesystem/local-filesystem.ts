@@ -341,6 +341,33 @@ export class LocalFilesystem extends MastraFilesystem {
   }
 
   /**
+   * Where a path that doesn't exist yet would actually land.
+   *
+   * Walks up to the nearest ancestor that does exist, resolves that through
+   * symlinks, then re-attaches the segments below it. If any ancestor is a link
+   * out of the workspace, the answer is outside the workspace — which is what
+   * makes creating a file through such a link detectable.
+   */
+  private async resolveThroughNearestExistingAncestor(absolutePath: string): Promise<string> {
+    const missing: string[] = [];
+    let candidate = absolutePath;
+
+    // Bounded by the filesystem root: nodePath.dirname('/') === '/'.
+    for (;;) {
+      const parent = nodePath.dirname(candidate);
+      if (parent === candidate) return absolutePath; // reached the root, nothing resolvable
+      missing.unshift(nodePath.basename(candidate));
+      try {
+        const parentReal = await fs.realpath(parent);
+        return nodePath.join(parentReal, ...missing);
+      } catch (error: unknown) {
+        if (!isEnoentError(error)) throw error;
+        candidate = parent;
+      }
+    }
+  }
+
+  /**
    * Verify that the resolved path doesn't escape basePath via symlinks.
    * Uses realpath to resolve symlinks and check the actual target.
    */
@@ -351,14 +378,17 @@ export class LocalFilesystem extends MastraFilesystem {
       return;
     }
 
-    // Resolve symlinks for the target path. If it doesn't exist,
-    // there are no symlinks to escape through — nothing to check.
+    // Resolve symlinks for the target path. A path that does not exist yet is
+    // NOT automatically safe: its parent may be a symlink pointing outside the
+    // workspace, in which case creating the file writes through that link. So
+    // fall back to the nearest ancestor that does exist, resolve that, and
+    // re-attach the segments below it — the location the write would land in.
     let targetReal: string;
     try {
       targetReal = await fs.realpath(absolutePath);
     } catch (error: unknown) {
-      if (isEnoentError(error)) return; // path doesn't exist yet — safe
-      throw error;
+      if (!isEnoentError(error)) throw error;
+      targetReal = await this.resolveThroughNearestExistingAncestor(absolutePath);
     }
 
     // Resolve real paths for roots, skipping any that don't exist
