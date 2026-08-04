@@ -365,9 +365,9 @@ export function FileBrowser({
           {onOpenSharing && (
             <DropdownMenu modal={false}>
               <DropdownMenu.Trigger asChild>
-                <Button variant="ghost" size="md" aria-label="Sharing options">
+                <Button variant="ghost" size="md" aria-label="Open in Desktop">
                   <Share2 className="h-4 w-4" />
-                  <span className="hidden sm:inline">Sharing...</span>
+                  <span className="hidden sm:inline">Open in Desktop...</span>
                   <ChevronDown className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenu.Trigger>
