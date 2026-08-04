@@ -90,14 +90,21 @@ async function cacheFullOutput(
   if (fullOutput.length <= truncatedOutput.length) return null;
 
   const fileName = `tool_outputs/${Date.now()}-${(toolCallId ?? 'cmd').replace(/[^a-zA-Z0-9_-]/g, '').slice(-12) || 'cmd'}.log`;
+  // The spill belongs NEXT TO WHERE THE COMMAND RAN — the sandbox's working
+  // directory — not at the filesystem root. When the filesystem is rooted
+  // above the working directory (e.g. '/' with per-conversation cwds under
+  // it), a bare relative write would land the file outside the directory the
+  // message cites; anchoring both to workingDir keeps the citation true.
+  const root = (workspace.sandbox as { workingDir?: string } | undefined)?.workingDir;
+  const spillPath = root ? `${root.replace(/\/+$/, '')}/${fileName}` : fileName;
   try {
-    await writeFile(fileName, fullOutput, { recursive: true });
+    await writeFile(spillPath, fullOutput, { recursive: true });
   } catch {
     return null;
   }
   const totalLines = fullOutput.split('\n').length;
-  const root = (workspace.sandbox as { workingDir?: string } | undefined)?.workingDir ?? '/workspace';
-  return `\n[Output truncated (${totalLines} lines total). Full output saved to ${root}/${fileName} — read or grep that file instead of re-running the command.]`;
+  const cited = root ? spillPath : fileName;
+  return `\n[Output truncated (${totalLines} lines total). Full output saved to ${cited} — read or grep that file instead of re-running the command.]`;
 }
 
 /** Shared execute function used by both foreground-only and background-capable tool variants. */

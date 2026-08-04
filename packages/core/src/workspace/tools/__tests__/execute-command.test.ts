@@ -925,10 +925,11 @@ describe('executeCommandTool output caching (Claude-style)', () => {
     const result = await execute({ command: 'x', timeout: null, cwd: null, tail: null }, context);
 
     expect(writes).toHaveLength(1);
+    // No workingDir on the sandbox: the spill is written AND cited relative,
+    // so the citation names exactly the path that was written.
     expect(writes[0].path).toMatch(/^tool_outputs\//);
     expect(writes[0].content).toBe(bigOutput);
-    expect(result).toContain('Full output saved to /workspace/');
-    expect(result).toContain('tool_outputs/');
+    expect(result).toContain(`Full output saved to ${writes[0].path}`);
     expect(result).toContain('line 500');
     expect(result).not.toContain('line 1\n');
   });
@@ -981,5 +982,47 @@ describe('script-file guidance', () => {
 
   it('documents where truncated output is persisted', () => {
     expect(executeCommandTool.description ?? '').toMatch(/tool_outputs/);
+  });
+});
+
+describe('truncation spill with a per-conversation working directory', () => {
+  it('writes AND cites the file inside the working directory, e.g. /workspaces/<slug>/tool_outputs', async () => {
+    const bigOutput = Array.from({ length: 500 }, (_, i) => `line ${i + 1}`).join('\n');
+    const writes: { path: string; content: string }[] = [];
+    const sandbox = {
+      id: 's',
+      name: 's',
+      provider: 'test',
+      status: 'running',
+      workingDir: '/workspaces/quarterly-analysis-ab12cd',
+      start: vi.fn(),
+      stop: vi.fn(),
+      destroy: vi.fn(),
+      getInfo: vi.fn(async () => ({ status: 'running' })),
+      executeCommand: vi.fn(async () => ({
+        success: true,
+        exitCode: 0,
+        stdout: bigOutput,
+        stderr: '',
+        executionTimeMs: 5,
+      })),
+    };
+    const filesystem = {
+      readOnly: false,
+      writeFile: vi.fn(async (path: string, content: string) => {
+        writes.push({ path, content });
+      }),
+    };
+    const workspace = new Workspace({ sandbox: sandbox as any, filesystem: filesystem as any });
+    const context = { workspace, agent: { toolCallId: 'call-wd' } } as any;
+
+    const result = await execute({ command: 'x', timeout: null, cwd: null, tail: null }, context);
+
+    expect(writes).toHaveLength(1);
+    // The spill lands NEXT TO WHERE THE COMMAND RAN — the conversation
+    // directory — and the message cites that exact path, so the Workspace tab
+    // shows tool_outputs/ inside the conversation, as specified.
+    expect(writes[0].path).toBe(result?.match(/Full output saved to (\S+) —/)?.[1]);
+    expect(writes[0].path).toMatch(/^\/workspaces\/quarterly-analysis-ab12cd\/tool_outputs\//);
   });
 });
