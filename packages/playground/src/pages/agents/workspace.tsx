@@ -17,7 +17,13 @@ export default function AgentWorkspace() {
   // has their own workspace, so open it rather than rendering an empty state
   // that reads as "you have no files" when the files are right there.
   const { data, isLoading } = useWorkspaces();
-  const workspaceId = data?.workspaces?.[0]?.id;
+  const workspaces = data?.workspaces ?? [];
+  // The user's OWN workspace, not simply the first in the list — the first is
+  // the org-wide shared tree, which is full of caches and virtualenvs and is
+  // nobody's idea of "my files". Per-user workspaces are id'd home-<sub> (local)
+  // or coding-<sub> (sandboxed); fall back only if neither is present.
+  const ownWorkspace = workspaces.find(w => w.id?.startsWith('home-') || w.id?.startsWith('coding-')) ?? workspaces[0];
+  const workspaceId = ownWorkspace?.id;
 
   if (isLoading) {
     return null;

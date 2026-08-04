@@ -16,7 +16,7 @@ import {
   is403ForbiddenError,
   toast,
 } from '@mastra/playground-ui';
-import { FileText, Wand2, Search, ChevronDown, Bot, Server } from 'lucide-react';
+import { FileText, Wand2, Search, Bot, Server } from 'lucide-react';
 import { useState, useCallback, useRef } from 'react';
 import { useSearchParams, useParams, useNavigate } from 'react-router';
 import { isWorkspaceNotSupportedError } from '@/domains/workspace/compatibility';
@@ -54,7 +54,6 @@ export default function Workspace() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [showSearch, setShowSearch] = useState(false);
-  const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
   const [showAddSkillDialog, setShowAddSkillDialog] = useState(false);
   const [sharingPlatform, setSharingPlatform] = useState<WorkspaceSharingPlatform | null>(null);
   const [removingSkillName, setRemovingSkillName] = useState<string | null>(null);
@@ -72,12 +71,16 @@ export default function Workspace() {
   const fileFromUrl = searchParams.get('file');
   const tabFromUrl = searchParams.get('tab') as TabType | null;
 
-  // List of all workspaces (global + agent workspaces) - used for workspace selector dropdown
+  // There is ONE workspace: this person's own tree. The list is still fetched
+  // for its display metadata (name, read-only flag, capabilities), but it is
+  // not a menu — nothing here picks between entries, and "the first one" was
+  // how the org-wide sandbox image's home directory ended up on screen instead
+  // of the user's files.
   const { data: workspacesData, error: workspacesError, isLoading: isLoadingWorkspaces } = useWorkspaces();
   const workspaces = workspacesData?.workspaces ?? [];
 
-  // Use workspaceId from path directly if available, otherwise fall back to first workspace from list
-  const effectiveWorkspaceId = workspaceIdFromPath ?? workspaces[0]?.id;
+  const ownWorkspaceId = workspaces.find(w => w.source === 'agent')?.id ?? workspaces[0]?.id;
+  const effectiveWorkspaceId = workspaceIdFromPath ?? ownWorkspaceId;
 
   // Workspace info - calls /api/workspaces/:workspaceId directly
   const {
@@ -118,13 +121,6 @@ export default function Workspace() {
     },
     [searchParams, setSearchParams],
   );
-
-  // Navigate to a different workspace (changes path, resets query params)
-  const setSelectedWorkspaceId = (id: string) => {
-    setHasUndiscoveredInstall(false); // Reset warning when switching workspaces
-    setShowSearch(false);
-    void navigate(`/workspaces/${id}`);
-  };
 
   const setCurrentPath = (path: string) => {
     updateSearchParams({ path: path === '.' || path === '' ? null : path, file: null });
@@ -521,78 +517,12 @@ export default function Workspace() {
       )}
 
       <PageLayout.MainArea className="grid content-start gap-6">
-        {/* Workspace Selector - shown when multiple workspaces exist */}
-        {workspaces.length > 1 && (
-          <div className="relative">
-            <button
-              onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
-              className="flex items-center gap-2 px-3 py-2 text-sm border border-border1 rounded-lg bg-surface2 hover:bg-surface3 transition-colors w-full max-w-md"
-            >
-              {selectedWorkspace?.source === 'agent' ? (
-                <Bot className="h-4 w-4 text-accent1" />
-              ) : (
-                <Server className="h-4 w-4 text-neutral4" />
-              )}
-              <span className="flex-1 text-left truncate">
-                {selectedWorkspace?.name ?? 'Select workspace'}
-                {selectedWorkspace?.source === 'agent' && selectedWorkspace.agentName && (
-                  <span className="text-neutral4 ml-1">({selectedWorkspace.agentName})</span>
-                )}
-              </span>
-              <ChevronDown
-                className={`h-4 w-4 text-neutral4 transition-transform ${showWorkspaceDropdown ? 'rotate-180' : ''}`}
-              />
-            </button>
+        {/* No workspace selector. A signed-in person has ONE tree — their own
+            files, the same thing their WebDAV share serves — so there is
+            nothing to choose between, and a picker offering the org-wide
+            sandbox image's home directory was actively misleading. */}
 
-            {showWorkspaceDropdown && (
-              <div className="absolute z-50 mt-1 w-full max-w-md bg-surface2 border border-border1 rounded-lg shadow-lg overflow-hidden">
-                {workspaces.map(workspace => (
-                  <button
-                    key={workspace.id}
-                    onClick={() => {
-                      setSelectedWorkspaceId(workspace.id);
-                      setShowWorkspaceDropdown(false);
-                    }}
-                    className={`flex items-center gap-3 px-3 py-2 w-full text-left hover:bg-surface3 transition-colors ${
-                      selectedWorkspace?.id === workspace.id ? 'bg-surface3' : ''
-                    }`}
-                  >
-                    {workspace.source === 'agent' ? (
-                      <Bot className="h-4 w-4 text-accent1 shrink-0" />
-                    ) : (
-                      <Server className="h-4 w-4 text-neutral4 shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-neutral6 truncate">{workspace.name}</div>
-                      <div className="text-xs text-neutral4 truncate">
-                        {workspace.source === 'agent' ? `Agent: ${workspace.agentName}` : 'Global workspace'}
-                      </div>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      {workspace.safety?.readOnly && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
-                          Read-only
-                        </span>
-                      )}
-                      {workspace.capabilities.hasFilesystem && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface4 text-neutral4">FS</span>
-                      )}
-                      {workspace.capabilities.hasSandbox && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface4 text-neutral4">Sandbox</span>
-                      )}
-                      {workspace.capabilities.hasSkills && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface4 text-neutral4">Skills</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Single workspace info badge - shown when only one workspace */}
-        {workspaces.length === 1 && selectedWorkspace && (
+        {selectedWorkspace && (
           <div className="flex items-center gap-2 text-sm text-neutral4">
             {selectedWorkspace.source === 'agent' ? (
               <Bot className="h-4 w-4 text-accent1" />
