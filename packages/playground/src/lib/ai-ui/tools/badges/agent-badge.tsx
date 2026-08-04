@@ -133,6 +133,7 @@ export const AgentBadge = ({
               toolCallId={message.toolCallId}
               addResult={() => {}}
               resume={() => {}}
+              respondToApproval={() => {}}
               metadata={{
                 mode: 'stream',
                 requireApprovalMetadata: parentRequireApprovalMetadata,

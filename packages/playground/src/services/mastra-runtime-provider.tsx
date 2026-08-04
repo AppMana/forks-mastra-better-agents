@@ -36,8 +36,13 @@ import type { ChatProps } from '@/types';
  * streamed update) must not unmount the runtime above it: that tears down the
  * live run's stream handling and, once the page-level boundary latches,
  * nothing ever renders again without a reload. Scope the failure to the
- * thread view and retry it on the next runtime update, which is the earliest
- * point where the store the view reads from has actually moved on.
+ * thread view and retry it on the next runtime update.
+ *
+ * The external store commits its new snapshot in an effect that runs after the
+ * update notification, so retrying synchronously with the notification replays
+ * the render against the state that just failed. Schedule the retry on the next
+ * task instead, which is the first point where the store the view reads from
+ * has actually moved on.
  */
 const ThreadViewErrorBoundary = ({ runtime, children }: { runtime: AssistantRuntime; children: ReactNode }) => {
   const [epoch, setEpoch] = useState(0);
@@ -45,10 +50,18 @@ const ThreadViewErrorBoundary = ({ runtime, children }: { runtime: AssistantRunt
 
   useEffect(() => {
     if (!isLatched) return;
-    return runtime.thread.subscribe(() => {
-      setIsLatched(false);
-      setEpoch(previous => previous + 1);
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = runtime.thread.subscribe(() => {
+      clearTimeout(retry);
+      retry = setTimeout(() => {
+        setIsLatched(false);
+        setEpoch(previous => previous + 1);
+      }, 0);
     });
+    return () => {
+      clearTimeout(retry);
+      unsubscribe();
+    };
   }, [isLatched, runtime]);
 
   return (

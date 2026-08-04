@@ -119,6 +119,14 @@ describe('fetchPrefillSlots', () => {
     const good = vi.fn(async () => ({ ok: true, json: async () => ({ slots: [slot()] }) }) as unknown as Response);
     expect(await fetchPrefillSlots(good as unknown as typeof fetch)).toHaveLength(1);
 
+    // A backend that omits a counter must read as 0, never NaN through the sums.
+    const sparse = vi.fn(
+      async () => ({ ok: true, json: async () => ({ slots: [{ id: 0, processing: true }] }) }) as unknown as Response,
+    );
+    const [only] = await fetchPrefillSlots(sparse as unknown as typeof fetch);
+    expect(only.promptCached).toBe(0);
+    expect(advancePrefill([only], IDLE_PREFILL_TRACKER, 0).progress.label).toBe('Reading your prompt…');
+
     const bad = vi.fn(async () => {
       throw new Error('down');
     });

@@ -39,16 +39,29 @@ describe('workspace upload helpers', () => {
     expect(sanitizeWorkspaceUploadFileName('')).toBe('upload');
   });
 
-  it('builds upload paths below the durable per-user uploads directory', () => {
-    expect(buildWorkspaceUploadPath('report.csv')).toBe('private/uploads/report.csv');
+  /**
+   * Workspace-root-relative. Naming a tree the sandbox mounts separately (a
+   * per-user home, a group share) would write the file into a same-named
+   * subdirectory of this workspace instead, which is not the path the composer
+   * would then announce.
+   */
+  it('builds upload paths below the workspace own uploads directory', () => {
+    expect(buildWorkspaceUploadPath('report.csv')).toBe('uploads/report.csv');
     expect(buildWorkspaceUploadPath('report.csv', '/incoming/')).toBe('incoming/report.csv');
   });
 
   it('keeps spaces and parentheses in the announced path verbatim', () => {
     const path = buildWorkspaceUploadPath('investor clubs (2).xlsx');
-    expect(path).toBe('private/uploads/investor clubs (2).xlsx');
+    expect(path).toBe('uploads/investor clubs (2).xlsx');
     expect(buildWorkspaceUploadNotice([path])).toBe(
-      'Uploaded workspace file:\n- /workspace/private/uploads/investor clubs (2).xlsx',
+      'Uploaded workspace file:\n- /workspace/uploads/investor clubs (2).xlsx',
+    );
+  });
+
+  /** An absolute path the server already resolved is announced verbatim. */
+  it('announces an already absolute path without prepending a root', () => {
+    expect(buildWorkspaceUploadNotice(['/workspace/private/uploads/report.csv'], '')).toBe(
+      'Uploaded workspace file:\n- /workspace/private/uploads/report.csv',
     );
   });
 
@@ -85,8 +98,14 @@ describe('workspace upload helpers', () => {
     expect(selected?.id).toBe('global');
   });
 
-  it('roots every notice at the sandbox mount point, with no org wide shared tree', () => {
-    expect(workspaceUploadNoticeRoot(workspace({ source: 'mastra' }))).toBe('/workspace');
+  /**
+   * A per-agent workspace IS the sandbox's working directory; a config-owned
+   * one is a separate volume mounted beside it. Announcing both at /workspace
+   * sent the agent to a path the file was never written to, and it fell back
+   * to searching the filesystem and dumping the file through the shell.
+   */
+  it('roots a config owned workspace at its own mount, not the working directory', () => {
+    expect(workspaceUploadNoticeRoot(workspace({ source: 'mastra' }))).toBe('/workspace/shared');
     expect(workspaceUploadNoticeRoot(workspace({ source: 'agent' }))).toBe('/workspace');
   });
 });

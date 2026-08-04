@@ -1,14 +1,19 @@
 import type { WorkspaceItem } from './types';
+import { appRoute } from '@/lib/app-routes';
 
 /**
  * Where uploads land, relative to the workspace root.
  *
- * `private/` is the signed-in user's own durable home, mounted into every one
- * of their sandboxes; the workspace root itself is scratch that is deleted
- * when the sandbox lease expires. Uploading to the root would silently lose
- * the file, so uploads always go to the private home.
+ * Workspace-root-relative, and nothing more: a path written through the
+ * workspace file API can only ever address that workspace's own tree. A
+ * sandbox additionally mounts trees the file API cannot reach — a per-user
+ * home, group shares — so naming one of those here writes the file into a
+ * same-named subdirectory of the wrong tree while the composer announces the
+ * mount, and the agent is sent somewhere the file was never written. Uploads
+ * that must land in one of those trees go through the application's own
+ * upload route, which knows the mounts.
  */
-export const WORKSPACE_UPLOAD_DIRECTORY = 'private/uploads';
+export const WORKSPACE_UPLOAD_DIRECTORY = 'uploads';
 
 export function sanitizeWorkspaceUploadFileName(fileName: string): string {
   const cleaned = fileName.replace(/[\\/]/g, '_').trim();
@@ -120,13 +125,76 @@ export function selectWorkspaceForUpload(workspaces: WorkspaceItem[], agentId?: 
 /**
  * Where a sandbox sees the chosen workspace's files.
  *
- * Every workspace's filesystem paths are relative to its own root, and a
- * sandbox mounts that root at `WORKSPACE_SANDBOX_ROOT`, so the announced path
- * is the upload path under that root — the same string for every workspace.
- * Announcing a separate org wide root here used to name a tree that no longer
- * exists, sending the agent to look for the file somewhere it was never
- * written.
+ * A per-agent workspace IS the sandbox's own filesystem, so its root is the
+ * working directory. A config-owned ('mastra') workspace is a separate volume
+ * the sandbox mounts alongside that working directory, at
+ * `WORKSPACE_SHARED_MOUNT`. Collapsing the two announces a path the agent
+ * cannot open.
  */
-export function workspaceUploadNoticeRoot(_workspace: Pick<WorkspaceItem, 'source'>): string {
-  return WORKSPACE_SANDBOX_ROOT;
+export function workspaceUploadNoticeRoot(workspace: Pick<WorkspaceItem, 'source'>): string {
+  return workspace.source === 'mastra' ? WORKSPACE_SHARED_MOUNT : WORKSPACE_SANDBOX_ROOT;
+}
+
+/** Where a sandbox mounts a config-owned workspace's volume. */
+export const WORKSPACE_SHARED_MOUNT = `${WORKSPACE_SANDBOX_ROOT}/shared`;
+
+/**
+ * One file uploaded through the embedding application's upload route.
+ *
+ * `workspacePath` is the whole point of preferring that route: the server
+ * resolves it from the mounts it configured, so the composer can state where
+ * the file is instead of reconstructing a guess from a directory constant and
+ * an assumed root.
+ */
+export interface UploadedWorkspaceFile {
+  name: string;
+  size: number;
+  path: string;
+  workspacePath: string;
+}
+
+/**
+ * Upload one file through the application's upload route, or `null` when the
+ * deployment serves no such route.
+ *
+ * Multipart, not the base64-in-JSON body the workspace file API takes: the
+ * encoding costs a third of the file again in the request and forces the whole
+ * file through a string on both sides.
+ */
+export async function uploadFileToAppRoute(file: File): Promise<UploadedWorkspaceFile | null> {
+  const body = new FormData();
+  body.append('path', WORKSPACE_UPLOAD_DIRECTORY);
+  body.append('files', file, file.name);
+
+  const response = await fetch(appRoute('/workspace/upload'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+    body,
+  });
+
+  // Only "this deployment has no upload route" falls back. Every other
+  // failure is this route's failure to report, not a reason to write the file
+  // somewhere else under a path the caller then mis-announces.
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(await uploadRouteErrorMessage(response));
+  }
+
+  const uploaded = ((await response.json()) as { uploaded?: UploadedWorkspaceFile[] }).uploaded?.[0];
+  if (!uploaded?.workspacePath) {
+    throw new Error('Upload route returned no path for the uploaded file');
+  }
+  return uploaded;
+}
+
+async function uploadRouteErrorMessage(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text) return `HTTP ${response.status}`;
+  try {
+    const body = JSON.parse(text) as { error?: string; message?: string };
+    return `HTTP ${response.status}: ${body.error ?? body.message ?? text}`;
+  } catch {
+    return `HTTP ${response.status}: ${text}`;
+  }
 }

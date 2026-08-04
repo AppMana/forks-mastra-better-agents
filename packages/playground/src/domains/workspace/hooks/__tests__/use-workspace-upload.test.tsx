@@ -66,6 +66,13 @@ const wrapper = () => {
 
 const listWorkspaces = () => http.get(`${BASE_URL}/api/workspaces`, () => HttpResponse.json(workspaces));
 
+/**
+ * These cases are about how the workspace file API's failures are reported, so
+ * they pin the deployment that has no application upload route and therefore
+ * reaches that API at all.
+ */
+const noAppUploadRoute = () => http.post('/app/workspace/upload', () => new HttpResponse(null, { status: 404 }));
+
 const renderUpload = async () => {
   const { result } = renderHook(() => useWorkspaceUpload(), { wrapper: wrapper() });
   await waitFor(() => expect(result.current.canUpload).toBe(true));
@@ -101,6 +108,7 @@ describe('useWorkspaceUpload error reporting', () => {
   it('does not report a JSON parse error when the server returns an empty 200', async () => {
     server.use(
       listWorkspaces(),
+      noAppUploadRoute(),
       http.post(`${BASE_URL}/api/workspaces/${WORKSPACE_ID}/fs/write`, () => new HttpResponse(null, { status: 200 })),
     );
 
@@ -122,6 +130,7 @@ describe('useWorkspaceUpload error reporting', () => {
   it('surfaces the server reason and status for a 413', async () => {
     server.use(
       listWorkspaces(),
+      noAppUploadRoute(),
       http.post(`${BASE_URL}/api/workspaces/${WORKSPACE_ID}/fs/write`, () =>
         HttpResponse.json(
           { error: 'Request body too large. The maximum accepted request body is 90177537 bytes' },
@@ -144,6 +153,7 @@ describe('useWorkspaceUpload error reporting', () => {
   it('surfaces a non-JSON body rather than the parser complaint', async () => {
     server.use(
       listWorkspaces(),
+      noAppUploadRoute(),
       http.post(
         `${BASE_URL}/api/workspaces/${WORKSPACE_ID}/fs/write`,
         () => new HttpResponse('<html>413 Request Entity Too Large</html>', { status: 200 }),
@@ -163,6 +173,7 @@ describe('useWorkspaceUpload error reporting', () => {
   it('still reports success when the write succeeds', async () => {
     server.use(
       listWorkspaces(),
+      noAppUploadRoute(),
       http.post(`${BASE_URL}/api/workspaces/${WORKSPACE_ID}/fs/write`, () =>
         HttpResponse.json({ success: true, path: 'private/uploads/quarterly_report.xlsx' }),
       ),

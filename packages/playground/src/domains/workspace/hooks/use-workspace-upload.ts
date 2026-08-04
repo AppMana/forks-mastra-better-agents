@@ -7,6 +7,7 @@ import {
   completeWorkspaceUploadFile,
   selectWorkspaceForUpload,
   startWorkspaceUploadProgress,
+  uploadFileToAppRoute,
   workspaceUploadNoticeRoot,
 } from '../workspace-upload';
 import type { WorkspaceUploadProgress } from '../workspace-upload';
@@ -36,22 +37,35 @@ export function useWorkspaceUpload(agentId?: string) {
     let progress = startWorkspaceUploadProgress(fileArray);
     setUploadProgress(progress);
 
+    // Empty once the application's upload route answers: the paths it returns
+    // are already absolute, so there is no root left to prepend.
+    let noticeRoot = '';
+
     try {
       for (const [index, file] of fileArray.entries()) {
-        const path = buildWorkspaceUploadPath(file.name);
-        await writeWorkspaceFile.mutateAsync({
-          workspaceId: selectedWorkspace.id,
-          path,
-          file,
-          recursive: true,
-        });
-        uploadedPaths.push(path);
+        const uploaded = await uploadFileToAppRoute(file);
+        if (uploaded) {
+          uploadedPaths.push(uploaded.workspacePath);
+        } else {
+          // No application upload route: the workspace file API is the only
+          // transport, and the file can only land in that workspace's own
+          // tree, at the mount that workspace is visible under.
+          const path = buildWorkspaceUploadPath(file.name);
+          await writeWorkspaceFile.mutateAsync({
+            workspaceId: selectedWorkspace.id,
+            path,
+            file,
+            recursive: true,
+          });
+          uploadedPaths.push(path);
+          noticeRoot = workspaceUploadNoticeRoot(selectedWorkspace);
+        }
         progress = completeWorkspaceUploadFile(progress, file, fileArray[index + 1]?.name ?? null);
         setUploadProgress(progress);
       }
 
       const currentText = (composerRuntime.getState() as { text?: string }).text ?? '';
-      const notice = buildWorkspaceUploadNotice(uploadedPaths, workspaceUploadNoticeRoot(selectedWorkspace));
+      const notice = buildWorkspaceUploadNotice(uploadedPaths, noticeRoot);
       composerRuntime.setText([currentText.trim(), notice].filter(Boolean).join('\n\n'));
       toast.success(`Uploaded ${uploadedPaths.length} workspace file${uploadedPaths.length === 1 ? '' : 's'}`);
     } catch (error) {

@@ -152,12 +152,34 @@ export function advancePrefill(
   };
 }
 
+function count(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Coerce one slot off the wire. Counters are arithmetic inputs, so a field the
+ * backend does not report has to read as 0 rather than poison the sums.
+ */
+export function readPrefillSlot(raw: Partial<PrefillSlot>): PrefillSlot {
+  return {
+    id: count(raw.id),
+    taskId: count(raw.taskId),
+    processing: Boolean(raw.processing),
+    decoding: Boolean(raw.decoding),
+    promptProcessed: count(raw.promptProcessed),
+    promptCached: count(raw.promptCached),
+    contextUsed: count(raw.contextUsed),
+    contextSize: count(raw.contextSize),
+    generated: count(raw.generated),
+  };
+}
+
 export async function fetchPrefillSlots(fetchImpl: typeof fetch = fetch): Promise<PrefillSlot[]> {
   try {
     const response = await fetchImpl(prefillStatusUrl(), { credentials: 'include' });
     if (!response.ok) return [];
-    const body = (await response.json()) as { slots?: PrefillSlot[] };
-    return Array.isArray(body.slots) ? body.slots : [];
+    const body = (await response.json()) as { slots?: Partial<PrefillSlot>[] };
+    return Array.isArray(body.slots) ? body.slots.map(readPrefillSlot) : [];
   } catch {
     return [];
   }
