@@ -39,9 +39,17 @@ describe('workspace upload helpers', () => {
     expect(sanitizeWorkspaceUploadFileName('')).toBe('upload');
   });
 
-  it('builds upload paths below the upload directory', () => {
-    expect(buildWorkspaceUploadPath('report.csv')).toBe('uploads/report.csv');
+  it('builds upload paths below the durable per-user uploads directory', () => {
+    expect(buildWorkspaceUploadPath('report.csv')).toBe('private/uploads/report.csv');
     expect(buildWorkspaceUploadPath('report.csv', '/incoming/')).toBe('incoming/report.csv');
+  });
+
+  it('keeps spaces and parentheses in the announced path verbatim', () => {
+    const path = buildWorkspaceUploadPath('investor clubs (2).xlsx');
+    expect(path).toBe('private/uploads/investor clubs (2).xlsx');
+    expect(buildWorkspaceUploadNotice([path])).toBe(
+      'Uploaded workspace file:\n- /workspace/private/uploads/investor clubs (2).xlsx',
+    );
   });
 
   it('builds a composer notice with absolute sandbox paths under the workspace root', () => {
@@ -56,30 +64,29 @@ describe('workspace upload helpers', () => {
     );
   });
 
-  it('prefers the durable mastra workspace over ephemeral agent sandboxes', () => {
+  it('uploads into the answering agent own workspace, the only one it can read', () => {
     const selected = selectWorkspaceForUpload(
-      [workspace({ id: 'agent', agentId: 'agent-1', source: 'agent' }), workspace({ id: 'global', source: 'mastra' })],
-      'agent-1',
-    );
-
-    expect(selected?.id).toBe('global');
-  });
-
-  it('falls back to the agent workspace when no durable workspace is writable', () => {
-    const selected = selectWorkspaceForUpload(
-      [
-        workspace({ id: 'global', source: 'mastra', safety: { readOnly: true } }),
-        workspace({ id: 'read-only-agent', agentId: 'agent-1', source: 'agent', safety: { readOnly: true } }),
-        workspace({ id: 'agent', agentId: 'agent-1', source: 'agent' }),
-      ],
+      [workspace({ id: 'global', source: 'mastra' }), workspace({ id: 'agent', agentId: 'agent-1', source: 'agent' })],
       'agent-1',
     );
 
     expect(selected?.id).toBe('agent');
   });
 
-  it('roots the notice at the sandbox mount point of the chosen workspace', () => {
-    expect(workspaceUploadNoticeRoot(workspace({ source: 'mastra' }))).toBe('/workspace/shared');
+  it('falls back to a config owned workspace when the agent has none writable', () => {
+    const selected = selectWorkspaceForUpload(
+      [
+        workspace({ id: 'global', source: 'mastra' }),
+        workspace({ id: 'read-only-agent', agentId: 'agent-1', source: 'agent', safety: { readOnly: true } }),
+      ],
+      'agent-1',
+    );
+
+    expect(selected?.id).toBe('global');
+  });
+
+  it('roots every notice at the sandbox mount point, with no org wide shared tree', () => {
+    expect(workspaceUploadNoticeRoot(workspace({ source: 'mastra' }))).toBe('/workspace');
     expect(workspaceUploadNoticeRoot(workspace({ source: 'agent' }))).toBe('/workspace');
   });
 });

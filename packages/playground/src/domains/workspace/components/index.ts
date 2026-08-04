@@ -2,6 +2,11 @@
 export { FileBrowser, FileViewer, type FileBrowserProps, type FileViewerProps } from './file-browser';
 
 export { NoWorkspacesInfo } from './no-workspaces-info';
+export {
+  SandboxStartupProgress,
+  SandboxStartupProgressView,
+  type SandboxStartupProgressViewProps,
+} from './sandbox-startup-progress';
 export { WorkspaceNotConfigured } from './workspace-not-configured';
 export { WorkspaceNotSupported } from './workspace-not-supported';
 

@@ -6236,7 +6236,13 @@ export class Agent<
         if (!threadExists) {
           await memory.createThread({
             threadId: thread.id,
-            metadata: thread.metadata,
+            // Record which agent this conversation is with. Thread rows are
+            // keyed on resourceId alone, so when resourceId identifies the
+            // user rather than the agent this is the only thing that keeps one
+            // agent's chats out of another's list. A thread created here
+            // instead of through POST /memory/threads must carry it too, or it
+            // is listed by no agent at all.
+            metadata: { agentId: this.id, ...thread.metadata },
             title: thread.title,
             memoryConfig,
             resourceId: thread.resourceId,
@@ -6287,7 +6293,9 @@ export class Agent<
                     resourceId,
                     memoryConfig,
                     title,
-                    metadata: thread.metadata,
+                    // Upserts the thread, so it has to preserve the agent
+                    // scoping stamped above rather than write it back empty.
+                    metadata: { agentId: this.id, ...thread.metadata },
                   });
                 }
               },

@@ -104,6 +104,7 @@ export * from './ds/components/MetricsLineChart';
 export * from './ds/components/PrevNextNav';
 export * from './ds/components/ScrollableContainer';
 export * from './ds/components/StatusBadge';
+export * from './ds/components/StreamTailPreview';
 
 // DS Icons
 export * from './ds/icons/index';

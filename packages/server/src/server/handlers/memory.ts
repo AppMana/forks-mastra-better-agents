@@ -85,6 +85,39 @@ interface SearchResult {
   };
 }
 
+/**
+ * Thread metadata key recording which agent a thread was a conversation with.
+ *
+ * A thread row is `{ id, resourceId, title, metadata }` — there is no agent
+ * column, and `resourceId` names the *owner*, not the agent. In a deployment
+ * that maps `resourceId` to the signed-in user (the point of
+ * `mapUserToResourceId`), `WHERE "resourceId" = $1` therefore returns every
+ * thread that person owns, and each agent in a Studio lists all of them: two
+ * agents, one shared chat history.
+ *
+ * `metadata` is the only part of a thread the stores can filter on
+ * (`listThreads({ filter: { resourceId, metadata } })`, which @mastra/pg
+ * compiles to `metadata::jsonb @> $n::jsonb`), so that is where the agent goes.
+ * The routes below stamp it whenever they know the agent and filter on it when
+ * asked for one agent's threads.
+ */
+const THREAD_AGENT_ID_KEY = 'agentId';
+
+/**
+ * Stamp the owning agent onto thread metadata, leaving an explicit caller-set
+ * value alone. Returns `metadata` untouched when there is no agent in scope —
+ * storage-level callers (`?agentId` omitted) address threads across agents and
+ * must not have one invented for them.
+ */
+function withThreadAgentId(
+  metadata: Record<string, unknown> | undefined,
+  agentId: string | undefined,
+): Record<string, unknown> | undefined {
+  if (!agentId) return metadata;
+  if (metadata && metadata[THREAD_AGENT_ID_KEY] !== undefined) return metadata;
+  return { ...(metadata ?? {}), [THREAD_AGENT_ID_KEY]: agentId };
+}
+
 function hasFGAUser(requestContext?: RequestContext): requestContext is RequestContext {
   const user = requestContext?.get('user');
   return !!user && typeof user === 'object';
@@ -891,7 +924,12 @@ export const LIST_THREADS_ROUTE = createRoute({
         }
       }
 
-      // Build filter object dynamically based on provided parameters
+      // Build filter object dynamically based on provided parameters.
+      // Scoping a listing to one agent is `metadata: { agentId }` — the stamp
+      // CREATE_THREAD_ROUTE writes (see THREAD_AGENT_ID_KEY). It is not implied
+      // by the `agentId` query param, which only selects whose memory to read
+      // through: threads predating the stamp carry no agentId at all, and
+      // deployments that put the agent in `resourceId` are already partitioned.
       const filter: { resourceId?: string; metadata?: Record<string, unknown> } | undefined =
         effectiveResourceId || metadata ? {} : undefined;
 
@@ -1388,6 +1426,8 @@ export const CREATE_THREAD_ROUTE = createRoute({
     try {
       const effectiveResourceId = getEffectiveResourceId(requestContext, resourceId);
       const effectiveThreadId = threadId ?? mastra.generateId();
+      // The agent this thread belongs to; the list route filters on it.
+      const effectiveMetadata = withThreadAgentId(metadata, agentId);
       validateBody({ resourceId: effectiveResourceId });
 
       await enforceThreadAccess({
@@ -1407,7 +1447,7 @@ export const CREATE_THREAD_ROUTE = createRoute({
             id: effectiveThreadId,
             resourceId: effectiveResourceId!,
             title,
-            metadata,
+            metadata: effectiveMetadata,
           });
           return toLocalThread(result.thread);
         }
@@ -1422,7 +1462,7 @@ export const CREATE_THREAD_ROUTE = createRoute({
       const result = await memory.createThread({
         resourceId: effectiveResourceId!,
         title,
-        metadata,
+        metadata: effectiveMetadata,
         threadId: effectiveThreadId,
       });
       return result;
@@ -1467,7 +1507,13 @@ export const UPDATE_THREAD_ROUTE = createRoute({
               permission: MastraFGAPermissions.MEMORY_WRITE,
             });
           }
-          const result = await gwClient.updateThread(effectiveThreadId!, { title, metadata });
+          const result = await gwClient.updateThread(effectiveThreadId!, {
+            title,
+            metadata: withThreadAgentId(
+              metadata,
+              (existing?.thread?.metadata?.[THREAD_AGENT_ID_KEY] as string | undefined) ?? agentId,
+            ),
+          });
           if (!result) {
             throw new HTTPException(404, { message: 'Thread not found' });
           }
@@ -1499,7 +1545,12 @@ export const UPDATE_THREAD_ROUTE = createRoute({
       const updatedThread = {
         ...thread,
         title: title || thread.title,
-        metadata: metadata || thread.metadata,
+        // A rename sends `metadata: {}`, which would otherwise drop the agent
+        // this thread belongs to and orphan it out of every agent's list.
+        metadata: withThreadAgentId(
+          metadata || thread.metadata,
+          (thread.metadata?.[THREAD_AGENT_ID_KEY] as string | undefined) ?? agentId,
+        ),
         // Don't allow changing resourceId if effectiveResourceId is set (prevents reassigning threads)
         resourceId: effectiveResourceId || resourceId || thread.resourceId,
         createdAt: thread.createdAt,

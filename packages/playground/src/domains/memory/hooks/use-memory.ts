@@ -67,7 +67,19 @@ export const useThreads = ({
     queryKey: ['memory', 'threads', resourceId, agentId, requestContext],
     queryFn: async () => {
       if (!isMemoryEnabled) return null;
-      const result = await client.listMemoryThreads({ resourceId, agentId, requestContext });
+      // `metadata.agentId` is what makes this list the *agent's* chats. A thread
+      // is stored as `{ resourceId, title, metadata }` with no agent column, so
+      // resourceId is the only partition — and a server that resolves it from
+      // the signed-in user (rather than echoing the agent id this hook sends)
+      // puts every agent's chats in one bucket, and each agent in the sidebar
+      // shows the same history. The create route stamps the agent for exactly
+      // this filter.
+      const result = await client.listMemoryThreads({
+        resourceId,
+        agentId,
+        metadata: { agentId },
+        requestContext,
+      });
       return result.threads;
     },
     enabled: Boolean(isMemoryEnabled),

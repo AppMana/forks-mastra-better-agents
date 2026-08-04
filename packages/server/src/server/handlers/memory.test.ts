@@ -1200,7 +1200,79 @@ describe('Memory Handlers', () => {
         resourceId: 'test-resource',
         title: 'Test Thread',
         threadId: expect.any(String),
+        // The agent this thread was a conversation with. Threads have no agent
+        // column and `resourceId` names the owner, so this is the only place
+        // the agent survives — and the only thing a client can filter on to
+        // list one agent's chats rather than all of the owner's.
+        metadata: { agentId: 'test-agent' },
       });
+    });
+
+    it('records the agent on the thread it creates', async () => {
+      const mastra = new Mastra({
+        logger: false,
+        agents: {
+          'test-agent': mockAgent,
+        },
+      });
+
+      const result = await CREATE_THREAD_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+        agentId: 'test-agent',
+        resourceId: 'test-resource',
+        title: 'Test Thread',
+      });
+
+      expect(result.metadata).toMatchObject({ agentId: 'test-agent' });
+    });
+
+    it('leaves a caller-supplied agentId in metadata alone', async () => {
+      const mastra = new Mastra({
+        logger: false,
+        agents: {
+          'test-agent': mockAgent,
+        },
+      });
+
+      const result = await CREATE_THREAD_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+        agentId: 'test-agent',
+        resourceId: 'test-resource',
+        title: 'Test Thread',
+        metadata: { agentId: 'other-agent', keep: 'me' },
+      });
+
+      expect(result.metadata).toEqual({ agentId: 'other-agent', keep: 'me' });
+    });
+
+    it('keeps the agent when a rename replaces the metadata', async () => {
+      const mastra = new Mastra({
+        logger: false,
+        agents: {
+          'test-agent': mockAgent,
+        },
+      });
+
+      const created = await CREATE_THREAD_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+        agentId: 'test-agent',
+        resourceId: 'test-resource',
+        title: 'Test Thread',
+      });
+
+      // How the Studio renames a chat: `{ title, metadata: {} }`. An empty
+      // object is truthy, so it replaces rather than merges, and dropping the
+      // agent here would leave the thread listed by no agent at all.
+      const renamed = await UPDATE_THREAD_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+        agentId: 'test-agent',
+        threadId: created.id,
+        title: 'Renamed',
+        metadata: {},
+      });
+
+      expect(renamed.title).toBe('Renamed');
+      expect(renamed.metadata).toMatchObject({ agentId: 'test-agent' });
     });
 
     it('should deny thread creation when FGA denies memory writes', async () => {

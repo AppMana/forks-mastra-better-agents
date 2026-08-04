@@ -46,6 +46,7 @@ vi.mock('@mastra/core/di', () => ({
 }));
 
 vi.mock('@mastra/playground-ui', () => ({
+  ErrorBoundary: ({ children }: { children: ReactNode }) => children,
   fileToBase64: vi.fn(),
 }));
 

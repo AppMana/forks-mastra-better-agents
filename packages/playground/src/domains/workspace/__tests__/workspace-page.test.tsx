@@ -116,6 +116,9 @@ function baseHandlers(
       HttpResponse.json({ skills: [], isSkillsConfigured: false }),
     ),
     http.get(`${BASE_URL}${appRoute('/workspace/sharing')}`, () => HttpResponse.json(SHARING_INFO)),
+    // Polled only while the page is in a loading state; registered so a slow
+    // first render never trips msw's onUnhandledRequest: 'error'.
+    http.get(`${BASE_URL}${appRoute('/workspace/sandbox-status')}`, () => HttpResponse.json({ status: null })),
   ];
 }
 
@@ -140,7 +143,7 @@ function renderWorkspacePage() {
 async function openEntryMenu(entryName: string) {
   const trigger = await screen.findByLabelText(`Actions for ${entryName}`);
   fireEvent.click(trigger, { button: 0 });
-  await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+  expect(await screen.findByRole('menu')).toBeTruthy();
 }
 
 describe('Workspace page — file listing', () => {
@@ -352,7 +355,7 @@ describe('Workspace page — sharing UI', () => {
 
     const trigger = await screen.findByLabelText('Sharing options');
     fireEvent.click(trigger, { button: 0 });
-    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+    expect(await screen.findByRole('menu')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /access in windows/i }));
 
     expect(await screen.findByText('Access in Windows')).toBeTruthy();
@@ -370,7 +373,7 @@ describe('Workspace page — sharing UI', () => {
 
     const trigger = await screen.findByLabelText('Sharing options');
     fireEvent.click(trigger, { button: 0 });
-    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+    expect(await screen.findByRole('menu')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /access in ubuntu/i }));
 
     expect(await screen.findByText('Access in Ubuntu')).toBeTruthy();
@@ -386,7 +389,7 @@ describe('Workspace page — sharing UI', () => {
 
     const trigger = await screen.findByLabelText('Sharing options');
     fireEvent.click(trigger, { button: 0 });
-    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+    expect(await screen.findByRole('menu')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /access in macos/i }));
 
     expect(await screen.findByText('Access in macOS')).toBeTruthy();
@@ -406,7 +409,7 @@ describe('Workspace page — sharing UI', () => {
 
     const trigger = await screen.findByLabelText('Sharing options');
     fireEvent.click(trigger, { button: 0 });
-    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy());
+    expect(await screen.findByRole('menu')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: /access in windows/i }));
 
     expect(await screen.findByText('Access in Windows')).toBeTruthy();

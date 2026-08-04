@@ -1,6 +1,14 @@
 import type { WorkspaceItem } from './types';
 
-export const WORKSPACE_UPLOAD_DIRECTORY = 'uploads';
+/**
+ * Where uploads land, relative to the workspace root.
+ *
+ * `private/` is the signed-in user's own durable home, mounted into every one
+ * of their sandboxes; the workspace root itself is scratch that is deleted
+ * when the sandbox lease expires. Uploading to the root would silently lose
+ * the file, so uploads always go to the private home.
+ */
+export const WORKSPACE_UPLOAD_DIRECTORY = 'private/uploads';
 
 export function sanitizeWorkspaceUploadFileName(fileName: string): string {
   const cleaned = fileName.replace(/[\\/]/g, '_').trim();
@@ -88,11 +96,14 @@ export async function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Uploads go to DURABLE storage: config-owned ('mastra') workspaces outlive
- * chats, while per-agent sandbox workspaces are deleted with their claim
- * lease — an upload there silently disappears when the sandbox expires. The
- * shared workspace is mounted into every sandbox at /workspace/shared, so
- * agents still see the files.
+ * Upload into the workspace the answering agent actually reads through.
+ *
+ * An agent resolves exactly one workspace per request, so a file written to
+ * any other one is invisible to it no matter how durable that storage is —
+ * the agent simply has no tool that can reach it. Durability is handled
+ * instead by writing under `WORKSPACE_UPLOAD_DIRECTORY`, the user's own home
+ * inside that workspace. A config-owned workspace is only a fallback, for
+ * deployments where the agent has no writable workspace of its own.
  */
 export function selectWorkspaceForUpload(workspaces: WorkspaceItem[], agentId?: string): WorkspaceItem | undefined {
   const writableWorkspaces = workspaces.filter(
@@ -100,13 +111,22 @@ export function selectWorkspaceForUpload(workspaces: WorkspaceItem[], agentId?: 
   );
 
   return (
-    writableWorkspaces.find(workspace => workspace.source === 'mastra') ??
     writableWorkspaces.find(workspace => workspace.agentId === agentId) ??
+    writableWorkspaces.find(workspace => workspace.source === 'mastra') ??
     writableWorkspaces[0]
   );
 }
 
-/** Where a sandboxed agent sees a durable ('mastra') workspace's files. */
-export function workspaceUploadNoticeRoot(workspace: Pick<WorkspaceItem, 'source'>): string {
-  return workspace.source === 'mastra' ? '/workspace/shared' : WORKSPACE_SANDBOX_ROOT;
+/**
+ * Where a sandbox sees the chosen workspace's files.
+ *
+ * Every workspace's filesystem paths are relative to its own root, and a
+ * sandbox mounts that root at `WORKSPACE_SANDBOX_ROOT`, so the announced path
+ * is the upload path under that root — the same string for every workspace.
+ * Announcing a separate org wide root here used to name a tree that no longer
+ * exists, sending the agent to look for the file somewhere it was never
+ * written.
+ */
+export function workspaceUploadNoticeRoot(_workspace: Pick<WorkspaceItem, 'source'>): string {
+  return WORKSPACE_SANDBOX_ROOT;
 }

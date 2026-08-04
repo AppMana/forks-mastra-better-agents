@@ -1,5 +1,5 @@
 import { useAuiState } from '@assistant-ui/react';
-import { Badge, Button, Icon, cn } from '@mastra/playground-ui';
+import { Badge, Button, Icon, StreamTailPreview, cn } from '@mastra/playground-ui';
 import { CheckIcon, ChevronUpIcon, CopyIcon, TerminalSquare } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCopyToClipboard } from '../../hooks/use-copy-to-clipboard';
@@ -79,64 +79,35 @@ const useElapsedTime = (isRunning: boolean, startTime?: number) => {
   return elapsed;
 };
 
-interface TerminalBlockProps {
+/** Command line plus copy button, rendered inside the preview's frame. */
+const TerminalHeader = ({
+  command,
+  onCopy,
+  isCopied,
+}: {
   command?: string;
-  content: string;
-  maxHeight?: string;
   onCopy?: () => void;
   isCopied?: boolean;
-}
-
-const TerminalBlock = ({ command, content, maxHeight = '20rem', onCopy, isCopied }: TerminalBlockProps) => {
-  const contentRef = useRef<HTMLPreElement>(null);
-
-  // Auto-scroll to bottom when content changes
-  useEffect(() => {
-    if (contentRef.current) {
-      contentRef.current.scrollTop = contentRef.current.scrollHeight;
-    }
-  }, [content]);
-
-  return (
-    <div className="rounded-md border border-border1 overflow-hidden">
-      {/* Terminal header with command */}
-      {command && (
-        <div className="px-3 py-2 bg-surface3 border-b border-border1 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-neutral6 text-xs shrink-0">$</span>
-            <code className="text-xs text-neutral-300 font-mono truncate">{command}</code>
-          </div>
-          {onCopy && (
-            <Button variant="default" size="icon-sm" tooltip="Copy output" onClick={onCopy} className="shrink-0">
-              <span className="grid">
-                <span
-                  style={{ gridArea: '1/1' }}
-                  className={cn('transition-transform', isCopied ? 'scale-100' : 'scale-0')}
-                >
-                  <CheckIcon size={14} />
-                </span>
-                <span
-                  style={{ gridArea: '1/1' }}
-                  className={cn('transition-transform', isCopied ? 'scale-0' : 'scale-100')}
-                >
-                  <CopyIcon size={14} />
-                </span>
-              </span>
-            </Button>
-          )}
-        </div>
-      )}
-      {/* Terminal content */}
-      <pre
-        ref={contentRef}
-        style={{ maxHeight }}
-        className="overflow-x-auto overflow-y-auto p-3 text-sm text-neutral-300 font-mono whitespace-pre-wrap bg-black"
-      >
-        {content || <span className="text-neutral6 italic">No output</span>}
-      </pre>
+}) => (
+  <>
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="text-neutral6 text-xs shrink-0">$</span>
+      <code className="text-xs text-neutral-300 font-mono truncate">{command}</code>
     </div>
-  );
-};
+    {onCopy && (
+      <Button variant="default" size="icon-sm" tooltip="Copy output" onClick={onCopy} className="shrink-0">
+        <span className="grid">
+          <span style={{ gridArea: '1/1' }} className={cn('transition-transform', isCopied ? 'scale-100' : 'scale-0')}>
+            <CheckIcon size={14} />
+          </span>
+          <span style={{ gridArea: '1/1' }} className={cn('transition-transform', isCopied ? 'scale-0' : 'scale-100')}>
+            <CopyIcon size={14} />
+          </span>
+        </span>
+      </Button>
+    )}
+  </>
+);
 
 export const SandboxExecutionBadge = ({
   toolName,
@@ -214,14 +185,25 @@ export const SandboxExecutionBadge = ({
   const executionTime = exitChunk?.data?.executionTimeMs;
   const wasKilled = exitChunk?.data?.killed;
 
-  // Combine streaming output into a single string
-  const streamingContent = sandboxChunks.map(chunk => chunk.data?.output || '').join('');
+  // The append-only chunk list fed to the tail preview. Kept as chunks rather
+  // than joined into one string: a long build emits thousands of stdout parts,
+  // and re-joining the whole transcript on every render is what makes the UI
+  // stall exactly when the user most wants to watch it. The preview appends
+  // only what is new and retains a bounded window.
+  const streamingSource = useMemo(
+    () => sandboxChunks.map(chunk => (chunk.data?.output as string | undefined) ?? ''),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sandboxChunks.length],
+  );
 
   // During a live session, prefer the full streaming output the user watched build up.
   // After hydration from storage (no streaming chunks available), fall back to the
   // truncated tool result. With transient stdout/stderr chunks, streaming data won't
   // survive a page refresh, so the result is the only option on reload.
-  const outputContent = streamingContent || (typeof result === 'string' ? result : '');
+  const hasStreamingContent = streamingSource.length > 0;
+  const resultText = typeof result === 'string' ? result : '';
+  const previewSource: string | string[] = hasStreamingContent ? streamingSource : resultText;
+  const hasOutput = hasStreamingContent || resultText.length > 0;
 
   const displayName =
     toolName === WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND
@@ -236,9 +218,12 @@ export const SandboxExecutionBadge = ({
   const firstChunkTime = sandboxChunks[0]?.data?.timestamp as number | undefined;
   const elapsedTime = useElapsedTime(isRunning, firstChunkTime);
 
+  // Joining the whole transcript is O(total output), so it happens on click and
+  // never during render. Copy yields the complete output the user saw stream by,
+  // not the bounded window the preview retains.
   const onCopy = () => {
-    if (!outputContent || isCopied) return;
-    copyToClipboard(outputContent);
+    if (!hasOutput || isCopied) return;
+    copyToClipboard(hasStreamingContent ? streamingSource.join('') : resultText);
   };
 
   return (
@@ -300,12 +285,23 @@ export const SandboxExecutionBadge = ({
       {/* Content area */}
       {!isCollapsed && (
         <div className="pt-2">
-          {(outputContent || commandDisplay) && (
-            <TerminalBlock
-              command={commandDisplay}
-              content={outputContent}
-              onCopy={outputContent ? onCopy : undefined}
-              isCopied={isCopied}
+          {(hasOutput || commandDisplay) && (
+            <StreamTailPreview
+              source={previewSource}
+              header={
+                commandDisplay ? (
+                  <TerminalHeader
+                    command={commandDisplay}
+                    onCopy={hasOutput ? onCopy : undefined}
+                    isCopied={isCopied}
+                  />
+                ) : undefined
+              }
+              isStreaming={isRunning}
+              done={isStreamingComplete}
+              emptyLabel={isRunning ? 'Waiting for output…' : 'No output'}
+              maxHeight="20rem"
+              data-testid="sandbox-execution-output"
             />
           )}
 

@@ -1,4 +1,5 @@
-import { CodeEditor, ToolsIcon } from '@mastra/playground-ui';
+import { ToolsIcon } from '@mastra/playground-ui';
+import { ToolResultView } from '../tool-result-view';
 import { BackgroundTaskMetadataDialogTrigger } from './background-task-metadata-dialog';
 import { BadgeWrapper } from './badge-wrapper';
 import { NetworkChoiceMetadataDialogTrigger } from './network-choice-metadata-dialog';
@@ -30,28 +31,23 @@ export const ToolBadge = ({
   toolCalled: toolCalledProp,
   withoutArgs,
 }: ToolBadgeProps) => {
+  // Every payload below is rendered through ToolResultView, which caps both the
+  // number of lines and the height of the block. Tool output is attacker-shaped
+  // in practice — a command that prints a megabyte is ordinary — so the
+  // transcript must stay the size of the conversation, not the size of the
+  // output.
   let argSlot = null;
 
   try {
     const { __mastraMetadata: _, _background, ...formattedArgs } = typeof args === 'object' ? args : JSON.parse(args);
-    argSlot = <CodeEditor data={formattedArgs} data-testid="tool-args" />;
+    argSlot = <ToolResultView value={formattedArgs} data-testid="tool-args" />;
   } catch {
-    argSlot = <pre className="whitespace-pre bg-surface4 p-4 rounded-md overflow-x-auto">{args as string}</pre>;
+    argSlot = <ToolResultView value={args as string} data-testid="tool-args" />;
   }
 
-  let resultSlot =
-    typeof result === 'string' ? (
-      <pre className="whitespace-pre bg-surface4 p-4 rounded-md overflow-x-auto">{result}</pre>
-    ) : (
-      <CodeEditor data={result} data-testid="tool-result" />
-    );
+  const resultSlot = <ToolResultView value={result} data-testid="tool-result" />;
 
-  let suspendPayloadSlot =
-    typeof suspendPayload === 'string' ? (
-      <pre className="whitespace-pre bg-surface4 p-4 rounded-md overflow-x-auto">{suspendPayload}</pre>
-    ) : (
-      <CodeEditor data={suspendPayload} data-testid="tool-suspend-payload" />
-    );
+  const suspendPayloadSlot = <ToolResultView value={suspendPayload} data-testid="tool-suspend-payload" />;
 
   const routingDecision = metadata?.mode === 'network' ? metadata.routingDecision : undefined;
   const selectionReason =
@@ -90,14 +86,14 @@ export const ToolBadge = ({
           </div>
         )}
 
-        {suspendPayloadSlot !== undefined && suspendPayload && (
+        {suspendPayload && (
           <div>
             <p className="font-medium pb-2">Tool suspend payload</p>
             {suspendPayloadSlot}
           </div>
         )}
 
-        {resultSlot !== undefined && result && (
+        {result && (
           <div>
             <p className="font-medium pb-2">Tool result</p>
             {resultSlot}
@@ -108,9 +104,7 @@ export const ToolBadge = ({
           <div>
             <p className="font-medium pb-2">Tool output</p>
 
-            <div className="h-40 overflow-y-auto">
-              <CodeEditor data={toolOutput} data-testid="tool-output" />
-            </div>
+            <ToolResultView value={toolOutput} maxHeight="10rem" data-testid="tool-output" />
           </div>
         )}
 

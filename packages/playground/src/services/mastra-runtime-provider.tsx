@@ -1,9 +1,9 @@
-import type { AppendMessage } from '@assistant-ui/react';
+import type { AppendMessage, AssistantRuntime } from '@assistant-ui/react';
 import { useExternalStoreRuntime, AssistantRuntimeProvider } from '@assistant-ui/react';
 import type { MastraDBMessage } from '@mastra/core/agent/message-list';
 import { RequestContext } from '@mastra/core/di';
 import type { CoreUserMessage } from '@mastra/core/llm';
-import { fileToBase64 } from '@mastra/playground-ui';
+import { ErrorBoundary, fileToBase64 } from '@mastra/playground-ui';
 import { useMastraClient, useChat } from '@mastra/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
@@ -30,6 +30,38 @@ import { useTracingSettings } from '@/domains/observability/context/tracing-sett
 import { useAdapters } from '@/lib/ai-ui/hooks/use-adapters';
 import { ThreadRuntimeStateProvider } from '@/lib/ai-ui/thread-runtime-state';
 import type { ChatProps } from '@/types';
+
+/**
+ * A transient render error in the thread view (e.g. a message part racing a
+ * streamed update) must not unmount the runtime above it: that tears down the
+ * live run's stream handling and, once the page-level boundary latches,
+ * nothing ever renders again without a reload. Scope the failure to the
+ * thread view and retry it on the next runtime update, which is the earliest
+ * point where the store the view reads from has actually moved on.
+ */
+const ThreadViewErrorBoundary = ({ runtime, children }: { runtime: AssistantRuntime; children: ReactNode }) => {
+  const [epoch, setEpoch] = useState(0);
+  const [isLatched, setIsLatched] = useState(false);
+
+  useEffect(() => {
+    if (!isLatched) return;
+    return runtime.thread.subscribe(() => {
+      setIsLatched(false);
+      setEpoch(previous => previous + 1);
+    });
+  }, [isLatched, runtime]);
+
+  return (
+    <ErrorBoundary
+      resetKeys={[epoch]}
+      onError={() => setIsLatched(true)}
+      title="Chat display error"
+      description="The conversation view failed to render. It retries automatically as the conversation updates."
+    >
+      {children}
+    </ErrorBoundary>
+  );
+};
 
 const getAppendMessageText = (message: AppendMessage) => {
   const text = (message.content[0] as { text?: unknown } | undefined)?.text;
@@ -617,7 +649,7 @@ export function MastraRuntimeProvider({
             declineNetworkToolcall={declineNetworkToolCall}
             networkToolCallApprovals={networkToolCallApprovals}
           >
-            {children}
+            <ThreadViewErrorBoundary runtime={runtime}>{children}</ThreadViewErrorBoundary>
           </ToolCallProvider>
         ) : null}
       </AssistantRuntimeProvider>

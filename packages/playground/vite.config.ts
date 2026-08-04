@@ -7,6 +7,8 @@ import ts from 'typescript';
 import type { Plugin, PluginOption, UserConfig } from 'vite';
 import { defineConfig } from 'vite';
 
+import { DEFAULT_APP_ROUTE_PREFIX } from './src/lib/app-routes';
+
 const studioStandalonePlugin = (targetPort: string, targetHost: string): PluginOption => ({
   name: 'studio-standalone-plugin',
   transformIndexHtml(html: string) {
@@ -25,34 +27,74 @@ const studioStandalonePlugin = (targetPort: string, targetHost: string): PluginO
   },
 });
 
-// @mastra/core dist chunks contain Node.js builtins (stream, fs, crypto, etc.)
-// from server-only code (voice, workspace tools) that shares chunks with
-// browser-safe code. These code paths are never called in the browser —
-// stub them so Rollup can resolve the imports without erroring.
-// enforce: 'pre' ensures this runs before Vite's built-in vite:resolve which
-// would otherwise replace them with __vite-browser-external (no named exports).
-// Node-only npm packages imported by @mastra/core server-only code (e.g. sandbox).
-// These are never called in the browser — stub them alongside Node builtins.
-const nodeOnlyPackages = new Set(['execa']);
+// @mastra/core dist chunks contain Node.js builtins (stream, fs, crypto, etc.) and
+// Node-only npm packages (execa, and posthog-node via the EE fga-check module) from
+// server-only code that shares chunks with browser-safe code. These code paths are
+// never reached in the browser, so the modules are replaced with inert stubs.
+//
+// This has to run in dev as well as build. `vite build` lets Rollup tree-shake most
+// of the server-only code away, but the dev dep-optimizer (esbuild) bundles whole
+// modules eagerly and cannot drop their side effects, so without stubbing,
+// posthog-node runs its module init in the browser (crashing in
+// createGetModuleFromFilename) and the fga-check chunk calls crypto.createHash at
+// module scope.
+//
+// enforce: 'pre' ensures this runs before Vite's built-in vite:resolve, which would
+// otherwise replace builtins with __vite-browser-external — that throws on any
+// property access rather than being inert.
+const nodeOnlyPackages = new Map<string, string[]>([
+  ['execa', []],
+  ['posthog-node', ['PostHog']],
+]);
 
-const stubNodeBuiltinsPlugin: Plugin = {
-  name: 'stub-node-builtins',
+const STUB_PREFIX = '\0node-stub:';
+const isValidIdentifier = (name: string) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name);
+
+const stubNodeModulesPlugin: Plugin = {
+  name: 'stub-node-modules',
   enforce: 'pre',
-  apply: 'build',
   resolveId(source) {
     if (nodeOnlyPackages.has(source)) {
-      return { id: `\0node-stub:${source}`, moduleSideEffects: false };
+      return { id: `${STUB_PREFIX}${source}`, moduleSideEffects: false };
     }
     const mod = source.startsWith('node:') ? source.slice(5) : source;
     const baseMod = mod.split('/')[0];
     if (builtinModules.includes(baseMod)) {
-      return { id: `\0node-stub:${source}`, moduleSideEffects: false };
+      return { id: `${STUB_PREFIX}${source}`, moduleSideEffects: false };
     }
   },
-  load(id) {
-    if (id.startsWith('\0node-stub:')) {
-      return { code: 'export default {}', syntheticNamedExports: true };
+  async load(id) {
+    if (!id.startsWith(STUB_PREFIX)) return;
+    const source = id.slice(STUB_PREFIX.length);
+
+    // Dev serves this stub as a real ES module over native ESM, where Rollup's
+    // `syntheticNamedExports` does not apply — so every name an importer might
+    // destructure has to be emitted explicitly. For Node builtins the authoritative
+    // list is the real module's own exports, read here in the Node config process.
+    let names = nodeOnlyPackages.get(source);
+    if (!names) {
+      try {
+        names = Object.keys(await import(source.startsWith('node:') ? source : `node:${source}`));
+      } catch {
+        names = [];
+      }
     }
+
+    // Inert no-op: any property access, call or construction yields another no-op
+    // instead of throwing, so an unexpected reference degrades quietly.
+    const code = [
+      'const noop = new Proxy(function () {}, {',
+      '  get: () => noop,',
+      '  apply: () => noop,',
+      '  construct: () => noop,',
+      '});',
+      'export default noop;',
+      ...names
+        .filter(name => name !== 'default' && isValidIdentifier(name))
+        .map(name => `export const ${name} = noop;`),
+    ].join('\n');
+
+    return { code, moduleSideEffects: false };
   },
 };
 
@@ -213,7 +255,7 @@ const routesManifestPlugin = (): Plugin => {
 
 export default defineConfig(({ mode }) => {
   const commonConfig: UserConfig = {
-    plugins: [stubNodeBuiltinsPlugin, tailwindcss(), react(), routesManifestPlugin()],
+    plugins: [stubNodeModulesPlugin, tailwindcss(), react(), routesManifestPlugin()],
     base: './',
     resolve: {
       dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react-resizable-panels', '@tanstack/react-query'],
@@ -248,10 +290,32 @@ export default defineConfig(({ mode }) => {
 
     return {
       ...commonConfig,
+      // `@standard-schema/spec` is a types-only package whose ESM entry
+      // (dist/index.js) is a 0-byte file. esbuild therefore detects no ESM
+      // exports during dep pre-bundling and marks it `needsInterop: true`,
+      // which makes Vite rewrite `import * as spec from '@standard-schema/spec'`
+      // (emitted by @mastra/core's bundled chunk) into a default import that the
+      // module does not provide. Excluding it from pre-bundling makes Vite serve
+      // the real (valid, empty) ESM module instead. The only use is a re-export
+      // of the namespace, so an empty namespace is correct.
+      optimizeDeps: {
+        // `posthog-node` is stubbed by stubNodeModulesPlugin; keep the dep
+        // optimizer from pre-bundling (and thus evaluating) the real package.
+        exclude: ['@standard-schema/spec', 'posthog-node'],
+      },
       server: {
         ...commonConfig.server,
         proxy: {
           '/api': {
+            target: `http://${targetHost}:${targetPort}`,
+            changeOrigin: true,
+          },
+          // The embedding application registers its own routes (see
+          // lib/app-routes.ts) on the same server as `/api`, and the studio
+          // requests them same-origin. Without this they hit Vite, which has no
+          // such file and no SPA fallback for a JSON fetch, so every
+          // application route answers 404 in dev only.
+          [DEFAULT_APP_ROUTE_PREFIX]: {
             target: `http://${targetHost}:${targetPort}`,
             changeOrigin: true,
           },

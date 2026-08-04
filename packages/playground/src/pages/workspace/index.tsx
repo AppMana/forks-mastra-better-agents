@@ -20,7 +20,7 @@ import { FileText, Wand2, Search, ChevronDown, Bot, Server } from 'lucide-react'
 import { useState, useCallback, useRef } from 'react';
 import { useSearchParams, useParams, useNavigate } from 'react-router';
 import { isWorkspaceNotSupportedError } from '@/domains/workspace/compatibility';
-import { AddSkillDialog, FileBrowser, SkillsTable } from '@/domains/workspace/components';
+import { AddSkillDialog, FileBrowser, SandboxStartupProgress, SkillsTable } from '@/domains/workspace/components';
 import { NoWorkspacesInfo } from '@/domains/workspace/components/no-workspaces-info';
 import { SearchWorkspacePanel, SearchSkillsPanel } from '@/domains/workspace/components/search-panel';
 import { WorkspaceFilePreview } from '@/domains/workspace/components/workspace-file-preview';
@@ -429,11 +429,14 @@ export default function Workspace() {
   const canSearchSkills = hasSkills && isSkillsConfigured && skills.length > 0;
   const hasSearchCapability = canSearchFiles || canSearchSkills;
 
-  // Show loading while fetching workspace list
+  // Show loading while fetching workspace list. A remote workspace can take
+  // minutes to start (allocation, scheduling, storage, image), so the wait
+  // reports the startup phase instead of an indefinite spinner; the component
+  // degrades to a plain spinner when no status is available.
   if (isLoadingWorkspaces) {
     return (
       <NoDataPageLayout>
-        <Spinner />
+        <SandboxStartupProgress workspaceId={workspaceIdFromPath} />
       </NoDataPageLayout>
     );
   }
@@ -480,6 +483,17 @@ export default function Workspace() {
     return (
       <NoDataPageLayout>
         <NoWorkspacesInfo />
+      </NoDataPageLayout>
+    );
+  }
+
+  // The workspace list is served from local metadata, but its info request is
+  // what waits on the sandbox actually being up — so this is the wait the user
+  // sees on a cold workspace, and it gets the same progress surface.
+  if (isLoadingInfo) {
+    return (
+      <NoDataPageLayout>
+        <SandboxStartupProgress workspaceId={effectiveWorkspaceId} />
       </NoDataPageLayout>
     );
   }

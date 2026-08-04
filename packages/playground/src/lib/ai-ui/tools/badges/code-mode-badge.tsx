@@ -1,5 +1,6 @@
-import { CodeBlock, CodeEditor, ToolCoinIcon, formatTypeScript } from '@mastra/playground-ui';
+import { CodeBlock, ToolCoinIcon, formatTypeScript } from '@mastra/playground-ui';
 import { useEffect, useState } from 'react';
+import { ToolResultView } from '../tool-result-view';
 import { BadgeWrapper } from './badge-wrapper';
 import type { ToolApprovalButtonsProps } from './tool-approval-buttons';
 import { ToolApprovalButtons } from './tool-approval-buttons';
@@ -124,25 +125,14 @@ export const CodeModeBadge = ({
         {hasResultValue && (
           <div>
             <p className="font-medium pb-2">Result</p>
-            {typeof result!.result === 'string' ? (
-              <pre className="whitespace-pre bg-surface4 p-4 rounded-md overflow-x-auto" data-testid="code-mode-result">
-                {result!.result as string}
-              </pre>
-            ) : (
-              <CodeEditor data={result!.result as Record<string, unknown>} data-testid="code-mode-result" />
-            )}
+            <ToolResultView value={result!.result} data-testid="code-mode-result" />
           </div>
         )}
 
         {logs.length > 0 && (
           <div>
             <p className="font-medium pb-2">Logs</p>
-            <pre
-              data-testid="code-mode-logs"
-              className="whitespace-pre-wrap break-words bg-black p-3 rounded-md text-neutral-300 font-mono text-sm overflow-x-auto"
-            >
-              {logs.join('\n')}
-            </pre>
+            <ToolResultView value={logs.join('\n')} data-testid="code-mode-logs" />
           </div>
         )}
 
