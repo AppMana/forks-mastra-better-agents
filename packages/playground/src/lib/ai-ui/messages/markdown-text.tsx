@@ -229,24 +229,30 @@ const defaultComponents = memoizeMarkdownComponents({
   ),
   code: function Code({ className, ...props }) {
     const isCodeBlock = useIsMarkdownCodeBlock();
-    return (
-      <pre
+    const codeElement = (
+      <code
+        className={cn(!isCodeBlock && 'bg-surface4 rounded border font-semibold', className)}
+        {...props}
         style={{
           fontSize: '0.875rem',
-          display: 'inline',
+          fontWeight: '400',
+          paddingBlock: !isCodeBlock ? '0.1em' : 0,
+          paddingInline: !isCodeBlock ? '0.3em' : 0,
         }}
-      >
-        <code
-          className={cn(!isCodeBlock && 'bg-surface4 rounded border font-semibold', className)}
-          {...props}
-          style={{
-            fontWeight: '400',
-            paddingBlock: !isCodeBlock ? '0.1em' : 0,
-            paddingInline: !isCodeBlock ? '0.3em' : 0,
-          }}
-        />{' '}
-      </pre>
+      />
     );
+
+    // Inline code must NOT be wrapped in <pre>. Markdown puts inline code
+    // inside a paragraph, and <pre> is not allowed inside <p>: the browser
+    // silently closes the paragraph when it meets one, so the real DOM stops
+    // matching the tree React thinks it rendered. Unmounting then reaches
+    // nodes that are no longer where React left them, which is the
+    // "Tried to unmount a fiber that is already unmounted" crash.
+    if (!isCodeBlock) {
+      return codeElement;
+    }
+
+    return <pre style={{ fontSize: '0.875rem' }}>{codeElement}</pre>;
   },
   CodeHeader,
   SyntaxHighlighter,
