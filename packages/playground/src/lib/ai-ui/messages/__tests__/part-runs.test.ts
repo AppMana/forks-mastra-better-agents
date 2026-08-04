@@ -79,3 +79,35 @@ describe('isHiddenRunPart', () => {
     expect(isHiddenRunPart(reasoning())).toBe(false);
   });
 });
+
+describe('attachment parts', () => {
+  it('render at the end of the reply, wherever the tool emitted them', () => {
+    const parts = [
+      { type: 'reasoning' },
+      { type: 'tool-call', toolName: 'attach_file' },
+      { type: 'data', name: 'attachment' },
+      { type: 'text', text: 'Here is the report.' },
+    ];
+
+    const groups = groupPartsIntoRuns(parts);
+    const flat = groups.flatMap(group => group.indices);
+
+    // Every index exactly once, attachment (index 2) LAST.
+    expect([...flat].sort()).toEqual([0, 1, 2, 3]);
+    expect(flat[flat.length - 1]).toBe(2);
+  });
+
+  it('do not break the icon strip around them', () => {
+    const parts = [
+      { type: 'tool-call', toolName: 'a' },
+      { type: 'data', name: 'attachment' },
+      { type: 'tool-call', toolName: 'b' },
+    ];
+
+    const groups = groupPartsIntoRuns(parts);
+    const runs = groups.filter(group => group.groupKey !== undefined);
+
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.indices).toEqual([0, 2]);
+  });
+});

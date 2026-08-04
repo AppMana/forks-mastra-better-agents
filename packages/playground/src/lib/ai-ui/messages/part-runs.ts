@@ -19,6 +19,16 @@ interface PartLike {
   type: string;
   toolName?: string;
   text?: string;
+  name?: string;
+}
+
+/**
+ * Attached-file parts are emitted mid-run, wherever the attach tool happened to
+ * execute — but a download link belongs at the END of the reply, after the
+ * prose that explains it, the way a person attaches a file to a message.
+ */
+function isAttachmentPart(part: PartLike): boolean {
+  return part.type === 'data' && part.name === 'attachment';
 }
 
 export function isRunPart(part: PartLike): boolean {
@@ -49,9 +59,16 @@ export function isHiddenRunPart(part: PartLike): boolean {
  */
 export function groupPartsIntoRuns(parts: readonly PartLike[]): PartRun[] {
   const groups: PartRun[] = [];
+  const attachments: PartRun[] = [];
   let run: PartRun | null = null;
 
   parts.forEach((part, index) => {
+    if (isAttachmentPart(part)) {
+      // Does not break the surrounding run either: the strip stays whole and
+      // the link renders after everything else.
+      attachments.push({ groupKey: undefined, indices: [index] });
+      return;
+    }
     if (isRunPart(part) || (run && isHiddenRunPart(part))) {
       if (!run) {
         run = { groupKey: `run-${index}`, indices: [] };
@@ -68,5 +85,5 @@ export function groupPartsIntoRuns(parts: readonly PartLike[]): PartRun[] {
     }
   });
 
-  return groups;
+  return [...groups, ...attachments];
 }
