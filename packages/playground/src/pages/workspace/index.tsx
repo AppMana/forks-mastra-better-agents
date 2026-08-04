@@ -529,10 +529,9 @@ export default function Workspace() {
             ) : (
               <Server className="h-4 w-4" />
             )}
+            {/* The workspace's own name, nothing appended: the filesystem
+                belongs to the user, not to whichever agent registered it. */}
             <span>{selectedWorkspace.name}</span>
-            {selectedWorkspace.source === 'agent' && selectedWorkspace.agentName && (
-              <span className="text-neutral3">({selectedWorkspace.agentName})</span>
-            )}
             {isReadOnly && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">Read-only</span>
             )}

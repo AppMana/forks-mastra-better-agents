@@ -134,7 +134,7 @@ describe('Workspace page — sandbox startup', () => {
           workspaces: [
             {
               id: WS,
-              name: 'Coding Workspace',
+              name: 'Test Workspace',
               status: 'ready',
               source: 'mastra',
               capabilities: {
@@ -155,7 +155,7 @@ describe('Workspace page — sandbox startup', () => {
         return HttpResponse.json({
           isWorkspaceConfigured: true,
           id: WS,
-          name: 'Coding Workspace',
+          name: 'Test Workspace',
           status: 'ready',
           capabilities: {
             hasFilesystem: true,

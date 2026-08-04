@@ -33,9 +33,19 @@ export default function AgentWorkspace() {
     let cancelled = false;
     setResolving(true);
     fetch(`/app/workspace/conversation?threadId=${encodeURIComponent(threadId)}`, { credentials: 'include' })
-      .then(response => (response.ok ? response.json() : undefined))
+      .then(response => {
+        // A backend that predates this route serves the SPA shell for unknown
+        // paths — a 200 whose body is HTML. Only an actual JSON response
+        // carries the conversation directory.
+        if (!response.ok || !(response.headers.get('content-type') ?? '').includes('application/json')) {
+          return undefined;
+        }
+        return response.json();
+      })
       .then((body: { path?: string } | undefined) => {
-        if (!cancelled) setConversationPath(body?.path);
+        if (!cancelled && typeof body?.path === 'string' && body.path.length > 0) {
+          setConversationPath(body.path);
+        }
       })
       .catch(() => {
         // Fall back to the root of the user's files rather than an error: the

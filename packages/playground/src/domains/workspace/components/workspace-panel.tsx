@@ -99,7 +99,13 @@ export function WorkspacePanel({ workspaceId, showSkills = true, emptyState, ini
 
   const fileFromUrl = searchParams.get('file');
   const tabFromUrl = searchParams.get('tab') as TabType | null;
-  const pathFromUrl = searchParams.get('path') || initialPath || '.';
+  // `initialPath` is only the default for a URL that carries no `path` yet.
+  // Once the user navigates, the URL is the source of truth — including the
+  // root, which is written explicitly as '.' when a non-root default exists,
+  // because deleting the param would fall back to the default and bounce the
+  // user straight back to where they came from.
+  const hasDefaultPath = Boolean(initialPath && initialPath !== '.' && initialPath !== '');
+  const pathFromUrl = searchParams.get('path') || (hasDefaultPath ? initialPath! : '.');
 
   // The list supplies the display metadata (name, read-only flag) that the
   // per-workspace info request does not carry.
@@ -133,7 +139,8 @@ export function WorkspacePanel({ workspaceId, showSkills = true, emptyState, ini
   );
 
   const setCurrentPath = (path: string) => {
-    updateSearchParams({ path: path === '.' || path === '' ? null : path, file: null });
+    const isRoot = path === '.' || path === '';
+    updateSearchParams({ path: isRoot ? (hasDefaultPath ? '.' : null) : path, file: null });
   };
 
   const setSelectedFile = useCallback(
@@ -673,22 +680,16 @@ export function WorkspacePanel({ workspaceId, showSkills = true, emptyState, ini
 }
 
 /**
- * Name of the workspace on show.
+ * Name of the workspace on show — its own name, nothing else.
  *
- * A workspace is named after what it belongs to, so its own name and the
- * agent name are routinely the same string. Repeating it as `Foo (Foo)` reads
- * as a rendering bug, so the parenthetical is only added when it says
- * something the name does not.
+ * The workspace is the user's filesystem; agents operate in it but do not own
+ * it, so the agent's name is never appended to it.
  */
 function WorkspaceHeader({ workspace, isReadOnly }: { workspace: WorkspaceItem; isReadOnly: boolean }) {
-  const showAgentName =
-    workspace.source === 'agent' && Boolean(workspace.agentName) && workspace.agentName !== workspace.name;
-
   return (
     <div className="flex items-center gap-2 text-sm text-neutral4">
       {workspace.source === 'agent' ? <Bot className="h-4 w-4 text-accent1" /> : <Server className="h-4 w-4" />}
       <span>{workspace.name}</span>
-      {showAgentName && <span className="text-neutral3">({workspace.agentName})</span>}
       {isReadOnly && (
         <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">Read-only</span>
       )}
