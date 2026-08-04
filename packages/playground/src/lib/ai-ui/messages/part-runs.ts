@@ -18,6 +18,7 @@ export interface PartRun {
 interface PartLike {
   type: string;
   toolName?: string;
+  text?: string;
 }
 
 export function isRunPart(part: PartLike): boolean {
@@ -28,9 +29,16 @@ export function isRunPart(part: PartLike): boolean {
  * Parts that render nothing (ToolFallback returns null for them) get no icon
  * in the row — an icon that expands to an empty panel would be a dead control.
  * They still stay inside the run so they don't split one row into two.
+ *
+ * Whitespace-only text is here too: models routinely emit an empty text part
+ * between tool calls, and treating those as breakers shredded one logical run
+ * into a stack of one- and two-icon rows — which read as broken columns, the
+ * opposite of the single flowing strip this exists to provide.
  */
 export function isHiddenRunPart(part: PartLike): boolean {
-  return part.type === 'tool-call' && part.toolName === 'updateWorkingMemory';
+  if (part.type === 'tool-call' && part.toolName === 'updateWorkingMemory') return true;
+  if (part.type === 'text' && (part.text ?? '').trim() === '') return true;
+  return false;
 }
 
 /**
@@ -44,12 +52,16 @@ export function groupPartsIntoRuns(parts: readonly PartLike[]): PartRun[] {
   let run: PartRun | null = null;
 
   parts.forEach((part, index) => {
-    if (isRunPart(part)) {
+    if (isRunPart(part) || (run && isHiddenRunPart(part))) {
       if (!run) {
         run = { groupKey: `run-${index}`, indices: [] };
         groups.push(run);
       }
       run.indices.push(index);
+    } else if (isHiddenRunPart(part)) {
+      // Hidden part with no run open yet: keep it ungrouped rather than
+      // opening a run that might contain nothing visible.
+      groups.push({ groupKey: undefined, indices: [index] });
     } else {
       run = null;
       groups.push({ groupKey: undefined, indices: [index] });

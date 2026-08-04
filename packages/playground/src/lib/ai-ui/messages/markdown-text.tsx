@@ -183,7 +183,12 @@ const defaultComponents = memoizeMarkdownComponents({
   ol: ({ className, ...props }) => <ol className={cn('my-5 ml-6 list-decimal [&>li]:mt-2', className)} {...props} />,
   hr: ({ className, ...props }) => <hr className={cn('my-5 border-b', className)} {...props} />,
   table: ({ className, ...props }) => (
-    <table className={cn('my-5 w-full border-separate border-spacing-0 overflow-y-auto', className)} {...props} />
+    // The wrapper owns horizontal overflow so a wide table scrolls WITHIN
+    // itself; without it the table stretches the message column and the whole
+    // chat pane grows a horizontal scrollbar.
+    <div className="my-5 w-full overflow-x-auto">
+      <table className={cn('w-full border-separate border-spacing-0', className)} {...props} />
+    </div>
   ),
   th: ({ className, ...props }) => (
     <th
