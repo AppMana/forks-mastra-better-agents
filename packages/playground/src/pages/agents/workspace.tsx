@@ -1,38 +1,63 @@
 import { Txt } from '@mastra/playground-ui';
+import { useEffect, useState } from 'react';
+import { useParams } from 'react-router';
 
 import { WorkspacePanel } from '@/domains/workspace/components/workspace-panel';
 import { useWorkspaces } from '@/domains/workspace/hooks/use-workspace';
+import { ownWorkspace } from '@/domains/workspace/own-workspace';
 
 /**
- * The Workspace view of an agent conversation.
+ * The Workspace view of an agent conversation: the user's ONE filesystem,
+ * opened at this conversation's own directory.
  *
- * Chat and Workspace are two windows onto one conversation: the messages, and
- * the files those messages produced. The panel is the same file browser the
- * Workspaces page uses, so there is one implementation of reading, writing and
- * sharing files rather than a second one that drifts.
+ * The roots of that filesystem are fixed — `workspaces/<conversation>`,
+ * the single `uploads/` every conversation shares, and `shared/<group>` — so
+ * standing in the conversation, `./uploads` and `./shared` are right there as
+ * links back to the tops. The server resolves which directory belongs to this
+ * thread (its name carries a discriminator derived from the thread id, so it
+ * survives retitles); the client never derives directory names from a rule.
  */
 export default function AgentWorkspace() {
-  // The panel shows nothing until it is told WHICH workspace to open, and this
-  // route has no dropdown to pick one — that was the point. A signed-in user
-  // has their own workspace, so open it rather than rendering an empty state
-  // that reads as "you have no files" when the files are right there.
+  const { threadId } = useParams<{ threadId?: string }>();
   const { data, isLoading } = useWorkspaces();
-  const workspaces = data?.workspaces ?? [];
-  // The user's OWN workspace, not simply the first in the list — the first is
-  // the org-wide shared tree, which is full of caches and virtualenvs and is
-  // nobody's idea of "my files". Per-user workspaces are id'd home-<sub> (local)
-  // or coding-<sub> (sandboxed); fall back only if neither is present.
-  const ownWorkspace = workspaces.find(w => w.id?.startsWith('home-') || w.id?.startsWith('coding-')) ?? workspaces[0];
-  const workspaceId = ownWorkspace?.id;
+  const workspace = ownWorkspace(data?.workspaces ?? []);
 
-  if (isLoading) {
+  const [conversationPath, setConversationPath] = useState<string | undefined>(undefined);
+  const [resolving, setResolving] = useState(Boolean(threadId));
+
+  useEffect(() => {
+    if (!threadId) {
+      setResolving(false);
+      return;
+    }
+    let cancelled = false;
+    setResolving(true);
+    fetch(`/app/workspace/conversation?threadId=${encodeURIComponent(threadId)}`, { credentials: 'include' })
+      .then(response => (response.ok ? response.json() : undefined))
+      .then((body: { path?: string } | undefined) => {
+        if (!cancelled) setConversationPath(body?.path);
+      })
+      .catch(() => {
+        // Fall back to the root of the user's files rather than an error: the
+        // tab is still useful, just not pre-navigated.
+      })
+      .finally(() => {
+        if (!cancelled) setResolving(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [threadId]);
+
+  if (isLoading || resolving) {
     return null;
   }
 
   return (
     <div className="h-full overflow-hidden">
       <WorkspacePanel
-        workspaceId={workspaceId}
+        workspaceId={workspace?.id}
+        initialPath={conversationPath}
         showSkills={false}
         emptyState={
           <Txt variant="ui-sm" className="text-icon3">

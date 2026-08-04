@@ -63,6 +63,13 @@ export interface WorkspacePanelProps {
   showSkills?: boolean;
   /** Shown when no workspace resolved. Defaults to the generic no-workspaces state. */
   emptyState?: React.ReactNode;
+  /**
+   * Directory to open when the URL carries no `path` yet. Lets a surface open
+   * the user's files already navigated somewhere — the agent's Workspace tab
+   * opens the conversation's own directory — while the URL keeps working as
+   * the source of truth once the user moves around.
+   */
+  initialPath?: string;
 }
 
 /**
@@ -73,7 +80,7 @@ export interface WorkspacePanelProps {
  * Extracted from the Workspaces page so the agent's Workspace tab renders the
  * exact same surface rather than a second implementation that drifts.
  */
-export function WorkspacePanel({ workspaceId, showSkills = true, emptyState }: WorkspacePanelProps) {
+export function WorkspacePanel({ workspaceId, showSkills = true, emptyState, initialPath }: WorkspacePanelProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [showSearch, setShowSearch] = useState(false);
@@ -92,7 +99,7 @@ export function WorkspacePanel({ workspaceId, showSkills = true, emptyState }: W
 
   const fileFromUrl = searchParams.get('file');
   const tabFromUrl = searchParams.get('tab') as TabType | null;
-  const pathFromUrl = searchParams.get('path') || '.';
+  const pathFromUrl = searchParams.get('path') || initialPath || '.';
 
   // The list supplies the display metadata (name, read-only flag) that the
   // per-workspace info request does not carry.

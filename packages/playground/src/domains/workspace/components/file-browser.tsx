@@ -47,6 +47,7 @@ import { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { coldarkDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import type { FileEntry, WorkspaceSharingPlatform } from '../types';
+import { useRangeSelection } from '../use-range-selection';
 
 // =============================================================================
 // Type Definitions
@@ -292,9 +293,25 @@ export function FileBrowser({
 
   const isRoot = isRootPath(currentPath);
 
-  const handleEntryClick = (entry: FileEntry) => {
+  // Multi-select with the conventions every file manager uses: shift-click for
+  // a range, ctrl/cmd-click to toggle. Keyed by full path, in display order.
+  const rowPaths = sortedEntries.map(entry => (isRoot ? entry.name : `${currentPath}/${entry.name}`));
+  const selection = useRangeSelection(rowPaths);
+
+  const handleEntryClick = (entry: FileEntry, event: React.MouseEvent) => {
     const fullPath = isRoot ? entry.name : `${currentPath}/${entry.name}`;
+    const modified = event.shiftKey || event.ctrlKey || event.metaKey;
+
+    selection.select(fullPath, event);
+
+    // A modified click adjusts the selection and nothing else — it neither
+    // opens the file nor descends into the directory.
+    if (modified) {
+      event.preventDefault();
+      return;
+    }
     if (entry.type === 'directory') {
+      selection.clear();
       onNavigate(fullPath);
     } else {
       onFileSelect?.(fullPath);
@@ -439,10 +456,14 @@ export function FileBrowser({
                   <li key={entry.name} className="group">
                     <ContextMenu>
                       <ContextMenu.Trigger>
-                        <div className="flex items-center hover:bg-surface4 transition-colors">
+                        <div
+                          className={`flex items-center hover:bg-surface4 transition-colors ${
+                            selection.isSelected(fullPath) ? 'bg-surface3' : ''
+                          }`}
+                        >
                           <button
-                            onClick={() => handleEntryClick(entry)}
-                            className="flex-1 min-w-0 flex items-center gap-3 px-4 py-2 text-left"
+                            onClick={event => handleEntryClick(entry, event)}
+                            className="flex-1 min-w-0 flex items-center gap-3 px-4 py-2 text-left select-none"
                           >
                             {getFileIcon(entry)}
                             <span className="text-sm text-neutral6 flex-1 truncate">{entry.name}</span>
