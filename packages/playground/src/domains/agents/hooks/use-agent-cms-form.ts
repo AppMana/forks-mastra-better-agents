@@ -1,5 +1,6 @@
 import type { CreateStoredAgentParams } from '@mastra/client-js';
 import type { AgentEditorConfig } from '@mastra/core/agent';
+import { codeAgentEditorOwnership } from '@mastra/core/agent/editor-ownership';
 import { toast } from '@mastra/playground-ui';
 import { useMastraClient } from '@mastra/react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -52,19 +53,17 @@ export function useAgentCmsForm(options: UseAgentCmsFormOptions) {
   const hasStoredOverride = isEdit && !!options.hasStoredOverride;
   const editorConfig = isEdit ? options.editorConfig : undefined;
 
-  // Derive which fields are owned by the user (vs by code).
-  // editor === false → nothing is owned (locked)
-  // editor.instructions === true → user owns instructions
-  // editor.tools === true → user owns tools (membership + descriptions)
-  // editor.tools === { description: true } → user owns tool descriptions only
+  // Derive which fields are owned by the user (vs by code), using the same
+  // rule the server applies when it decides what to keep. Deriving it twice was
+  // the bug: this side read a missing `editor` config as "owns nothing" and
+  // sent instructions: [] expecting the server to drop it, while the server
+  // read the same missing config as "fully editable" and stored the empty
+  // array — which blanked the agent's instructions and made every request fail.
   // Variables (requestContextSchema) are always editable for code agents.
-  const ownsInstructions = !isCodeAgentOverride || (editorConfig !== false && editorConfig?.instructions === true);
-  const ownsTools = !isCodeAgentOverride || (editorConfig !== false && editorConfig?.tools === true);
-  const ownsToolDescriptions =
-    !isCodeAgentOverride ||
-    (editorConfig !== false &&
-      (editorConfig?.tools === true ||
-        (typeof editorConfig?.tools === 'object' && editorConfig.tools.description === true)));
+  const ownership = codeAgentEditorOwnership(editorConfig);
+  const ownsInstructions = !isCodeAgentOverride || ownership.ownsInstructions;
+  const ownsTools = !isCodeAgentOverride || ownership.ownsTools;
+  const ownsToolDescriptions = !isCodeAgentOverride || ownership.ownsTools || ownership.ownsToolDescriptionsOnly;
 
   // Track whether we've already created a stored override for a code agent in this session
   const [overrideCreated, setOverrideCreated] = useState(false);
