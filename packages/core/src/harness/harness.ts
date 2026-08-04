@@ -3114,6 +3114,10 @@ export class Harness<TState = {}> {
       default:
         break;
     }
+
+    // Every case above either returns explicitly or breaks; the chunk did
+    // not complete a message.
+    return undefined;
   }
 
   private finishStreamState(state: HarnessStreamState): { message: HarnessMessage; suspended?: boolean } {
