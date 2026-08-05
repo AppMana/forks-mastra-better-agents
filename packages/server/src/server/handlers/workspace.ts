@@ -186,6 +186,39 @@ async function requestFilesystem(
 }
 
 /**
+ * What the LIST route says about one workspace's filesystem.
+ *
+ * The list is the only thing a client reads before it decides where a file can
+ * go: the playground picks the workspace an upload lands in from these two
+ * fields, and hides both the drag-and-drop overlay and the "Upload to
+ * Workspace" button when nothing in the list is writable. Reading the static
+ * getter here therefore did more than mislabel a capability — it took the
+ * upload affordances off the screen for a workspace whose file tools were
+ * working.
+ *
+ * A resolver that refuses this particular request is still a configured
+ * filesystem, so the capability is reported from the configuration and the
+ * write route reports its own failure, rather than the list quietly deciding
+ * there is nowhere to put a file.
+ */
+async function listedFilesystem(
+  workspace: Workspace,
+  requestContext?: RequestContext,
+): Promise<{ hasFilesystem: boolean; readOnly: boolean }> {
+  const hasConfig =
+    typeof (workspace as any).hasFilesystemConfig === 'function'
+      ? (workspace as any).hasFilesystemConfig()
+      : !!workspace.filesystem;
+
+  try {
+    const filesystem = await requestFilesystem(workspace, requestContext);
+    return { hasFilesystem: !!filesystem || hasConfig, readOnly: filesystem?.readOnly ?? false };
+  } catch {
+    return { hasFilesystem: hasConfig, readOnly: false };
+  }
+}
+
+/**
  * Get a workspace by ID from Mastra's workspace registry.
  *
  * Backwards compatible: Falls back to searching through agents if
@@ -354,6 +387,8 @@ export const LIST_WORKSPACES_ROUTE = createRoute({
             continue;
           }
 
+          const filesystem = await listedFilesystem(ws, requestContext);
+
           workspaces.push({
             id: ws.id,
             name: ws.name,
@@ -361,7 +396,7 @@ export const LIST_WORKSPACES_ROUTE = createRoute({
             source,
             ...(source === 'agent' && agentId ? { agentId, ...(agentName != null ? { agentName } : {}) } : {}),
             capabilities: {
-              hasFilesystem: !!ws.filesystem,
+              hasFilesystem: filesystem.hasFilesystem,
               hasSandbox: !!ws.sandbox,
               canBM25: ws.canBM25,
               canVector: ws.canVector,
@@ -369,7 +404,7 @@ export const LIST_WORKSPACES_ROUTE = createRoute({
               hasSkills: !!ws.skills,
             },
             safety: {
-              readOnly: ws.filesystem?.readOnly ?? false,
+              readOnly: filesystem.readOnly,
             },
           });
         }
@@ -380,13 +415,14 @@ export const LIST_WORKSPACES_ROUTE = createRoute({
         const globalWorkspace = mastra.getWorkspace?.();
         if (globalWorkspace) {
           seenIds.add(globalWorkspace.id);
+          const filesystem = await listedFilesystem(globalWorkspace, requestContext);
           workspaces.push({
             id: globalWorkspace.id,
             name: globalWorkspace.name,
             status: globalWorkspace.status,
             source: 'mastra',
             capabilities: {
-              hasFilesystem: !!globalWorkspace.filesystem,
+              hasFilesystem: filesystem.hasFilesystem,
               hasSandbox: !!globalWorkspace.sandbox,
               canBM25: globalWorkspace.canBM25,
               canVector: globalWorkspace.canVector,
@@ -394,7 +430,7 @@ export const LIST_WORKSPACES_ROUTE = createRoute({
               hasSkills: !!globalWorkspace.skills,
             },
             safety: {
-              readOnly: globalWorkspace.filesystem?.readOnly ?? false,
+              readOnly: filesystem.readOnly,
             },
           });
         }
@@ -406,6 +442,7 @@ export const LIST_WORKSPACES_ROUTE = createRoute({
               const agentWorkspace = await (agent as any).getWorkspace?.();
               if (agentWorkspace && !seenIds.has(agentWorkspace.id)) {
                 seenIds.add(agentWorkspace.id);
+                const filesystem = await listedFilesystem(agentWorkspace, requestContext);
                 workspaces.push({
                   id: agentWorkspace.id,
                   name: agentWorkspace.name,
@@ -414,7 +451,7 @@ export const LIST_WORKSPACES_ROUTE = createRoute({
                   agentId,
                   agentName: (agent as any).name,
                   capabilities: {
-                    hasFilesystem: !!agentWorkspace.filesystem,
+                    hasFilesystem: filesystem.hasFilesystem,
                     hasSandbox: !!agentWorkspace.sandbox,
                     canBM25: agentWorkspace.canBM25,
                     canVector: agentWorkspace.canVector,
@@ -422,7 +459,7 @@ export const LIST_WORKSPACES_ROUTE = createRoute({
                     hasSkills: !!agentWorkspace.skills,
                   },
                   safety: {
-                    readOnly: agentWorkspace.filesystem?.readOnly ?? false,
+                    readOnly: filesystem.readOnly,
                   },
                 });
               }

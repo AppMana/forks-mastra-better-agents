@@ -62,15 +62,24 @@ export function useWorkspaceFileUploader(agentId?: string) {
  * the user as editable prose: the announcement is for the agent, the chip is
  * for the human, and one gesture must not produce a different result from the
  * other.
+ *
+ * Nothing here is gated on the client having found a writable workspace in the
+ * list. The transport is the application's own upload route, which the client
+ * cannot enumerate and which needs no workspace at all — a listed workspace is
+ * only the fallback for deployments that serve no such route. Gating on it
+ * meant a list that under-reported its workspaces (a per-request filesystem
+ * resolver reads as "no filesystem") silently removed the drag-and-drop
+ * overlay and the upload button while the "+" button, on the same transport,
+ * kept working. A file with nowhere to go is refused loudly by the adapter
+ * instead, which is the same report every other upload failure gets.
  */
-export function useWorkspaceUpload(agentId?: string) {
+export function useWorkspaceUpload() {
   const [uploadProgress, setUploadProgress] = useState<WorkspaceUploadProgress | null>(null);
   const composerRuntime = useComposerRuntime();
-  const { workspace: selectedWorkspace } = useWorkspaceFileUploader(agentId);
 
   const uploadFiles = async (files: FileList | File[] | null) => {
     const fileArray = files ? Array.from(files) : [];
-    if (!selectedWorkspace || fileArray.length === 0) return;
+    if (fileArray.length === 0) return;
 
     let progress = startWorkspaceUploadProgress(fileArray);
     setUploadProgress(progress);
@@ -98,5 +107,5 @@ export function useWorkspaceUpload(agentId?: string) {
     }
   };
 
-  return { uploadFiles, uploadProgress, canUpload: !!selectedWorkspace };
+  return { uploadFiles, uploadProgress };
 }

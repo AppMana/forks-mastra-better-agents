@@ -101,17 +101,19 @@ const spreadsheet = () => {
 const renderUpload = async () => {
   const { result } = renderHook(
     () => {
-      const { uploadFile } = useWorkspaceFileUploader('document-analyst');
+      const { uploadFile, workspace } = useWorkspaceFileUploader('document-analyst');
       const adapter = useMemo(
         () => new WorkspaceUploadAttachmentAdapter(uploadFile, message => toastError(message)),
         [uploadFile],
       );
       composer.current = useMemo(() => createComposerHarness(adapter, TYPED), [adapter]);
-      return useWorkspaceUpload('document-analyst');
+      return { ...useWorkspaceUpload(), workspace };
     },
     { wrapper: wrapper() },
   );
-  await waitFor(() => expect(result.current.canUpload).toBe(true));
+  // The adapter's fallback transport writes into this workspace, so the list
+  // has to have been answered before anything is dropped.
+  await waitFor(() => expect(result.current.workspace).toBeDefined());
   return result;
 };
 

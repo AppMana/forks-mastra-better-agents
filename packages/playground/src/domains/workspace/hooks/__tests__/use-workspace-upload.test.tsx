@@ -82,17 +82,19 @@ const noAppUploadRoute = () => http.post('/app/workspace/upload', () => new Http
 const renderUpload = async () => {
   const { result } = renderHook(
     () => {
-      const { uploadFile } = useWorkspaceFileUploader();
+      const { uploadFile, workspace } = useWorkspaceFileUploader();
       const adapter = useMemo(
         () => new WorkspaceUploadAttachmentAdapter(uploadFile, message => toastError(message)),
         [uploadFile],
       );
       composer.current = useMemo(() => createComposerHarness(adapter), [adapter]);
-      return useWorkspaceUpload();
+      return { ...useWorkspaceUpload(), workspace };
     },
     { wrapper: wrapper() },
   );
-  await waitFor(() => expect(result.current.canUpload).toBe(true));
+  // These cases reach the workspace file API, so the list has to have been
+  // answered before anything is uploaded.
+  await waitFor(() => expect(result.current.workspace).toBeDefined());
   return result;
 };
 

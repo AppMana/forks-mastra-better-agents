@@ -685,8 +685,12 @@ describe('Workspace Handlers', () => {
      * every route has to resolve, or the panel answers "no workspace
      * filesystem configured" for a workspace whose file tools work.
      */
-    function createResolverWorkspace(id: string, files: Map<string, string>): Workspace {
-      const filesystem = createMockFilesystem(files, {});
+    function createResolverWorkspace(
+      id: string,
+      files: Map<string, string>,
+      options: { readOnly?: boolean } = {},
+    ): Workspace {
+      const filesystem = createMockFilesystem(files, options);
       return new Workspace({ id, name: `Workspace ${id}`, filesystem: () => filesystem });
     }
 
@@ -730,6 +734,38 @@ describe('Workspace Handlers', () => {
       });
 
       expect(result.capabilities?.hasFilesystem).toBe(true);
+    });
+
+    /**
+     * The list is what every client reads to decide whether a workspace can be
+     * written to at all — the playground picks the workspace an upload goes
+     * into from exactly these two fields, and hides the drag-and-drop overlay
+     * and the "Upload to Workspace" button when no listed workspace is
+     * writable. Answering `hasFilesystem: false` for a workspace whose file
+     * tools work took both affordances off the screen.
+     */
+    it('lists the workspace as having a filesystem', async () => {
+      const workspace = createResolverWorkspace('resolver-workspace', new Map());
+      const mastra = createMastra(workspace);
+
+      const result = await LIST_WORKSPACES_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+      });
+
+      expect(result.workspaces).toHaveLength(1);
+      expect(result.workspaces[0].capabilities.hasFilesystem).toBe(true);
+      expect(result.workspaces[0].safety.readOnly).toBe(false);
+    });
+
+    it('lists the resolved filesystem read-only flag', async () => {
+      const workspace = createResolverWorkspace('resolver-workspace', new Map(), { readOnly: true });
+      const mastra = createMastra(workspace);
+
+      const result = await LIST_WORKSPACES_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+      });
+
+      expect(result.workspaces[0].safety.readOnly).toBe(true);
     });
   });
 

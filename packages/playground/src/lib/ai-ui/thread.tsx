@@ -1,8 +1,8 @@
 import type { MessagePrimitive } from '@assistant-ui/react';
 import { ComposerPrimitive, ThreadPrimitive, useComposer, useComposerRuntime } from '@assistant-ui/react';
 import { Avatar, Button, ButtonsGroup, cn, useAutoscroll } from '@mastra/playground-ui';
-import { ArrowUp, EyeIcon, Mic, PlusIcon, Upload } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowUp, EyeIcon, PlusIcon, Upload } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { AttachFileDialog } from './attachments/attach-file-dialog';
 import { ComposerAttachments } from './attachments/attachment';
 import { BracketOverlay } from './components/bracket-overlay';
@@ -17,7 +17,6 @@ import { ComposerModelSwitcher, ComposerModelWarning } from '@/domains/agents/co
 import { PrefillIndicator } from '@/domains/agents/components/prefill-indicator';
 import { usePermissions } from '@/domains/auth/hooks/use-permissions';
 import { useThreadInput } from '@/domains/conversation';
-import { useSpeechRecognition } from '@/domains/voice/hooks/use-speech-recognition';
 import { WorkspaceDropzone } from '@/domains/workspace/components/workspace-dropzone';
 import { WorkspaceUploadProgressBar } from '@/domains/workspace/components/workspace-upload-progress';
 import { useWorkspaceUpload } from '@/domains/workspace/hooks/use-workspace-upload';
@@ -266,29 +265,6 @@ const ComposerSendingGradient = ({ pulseKey }: { pulseKey: number }) => {
   );
 };
 
-const SpeechInput = ({ agentId }: { agentId?: string }) => {
-  const composerRuntime = useComposerRuntime();
-  const { start, stop, isListening, transcript } = useSpeechRecognition({ agentId });
-
-  useEffect(() => {
-    if (!transcript) return;
-
-    composerRuntime.setText(transcript);
-  }, [composerRuntime, transcript]);
-
-  return (
-    <Button
-      variant="default"
-      size="icon-md"
-      type="button"
-      tooltip={isListening ? 'Stop dictation' : 'Start dictation'}
-      onClick={() => (isListening ? stop() : start())}
-    >
-      {isListening ? <CircleStopIcon /> : <Mic className="h-5 w-5 text-neutral3 hover:text-neutral6" />}
-    </Button>
-  );
-};
-
 interface ComposerActionProps {
   canExecute?: boolean;
 }
@@ -299,20 +275,23 @@ interface ComposerActionRowProps extends ComposerActionProps {
   showModelSwitcher?: boolean;
 }
 
-const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwitcher }: ComposerActionRowProps) => {
+export const ComposerActionRow = ({
+  canExecute = true,
+  agentId,
+  threadId,
+  showModelSwitcher,
+}: ComposerActionRowProps) => {
   const [isAddAttachmentDialogOpen, setIsAddAttachmentDialogOpen] = useState(false);
   const workspaceUploadInputRef = useRef<HTMLInputElement>(null);
-  const { uploadFiles, uploadProgress, canUpload } = useWorkspaceUpload(agentId);
+  const { uploadFiles, uploadProgress } = useWorkspaceUpload();
 
   return (
     <>
-      {/* Drag a file anywhere over the page → drop-target overlay → workspace
-          upload (durable, with the path injected into the composer), never a
-          chat attachment. */}
-      <WorkspaceDropzone
-        onDropFiles={files => void uploadFiles(files)}
-        disabled={!canUpload || uploadProgress !== null}
-      />
+      {/* Drag a file anywhere over the page → drop-target overlay → the same
+          upload the "+" button performs, ending in a chip. Offered whatever
+          the workspace list says: the upload route, not a listed workspace, is
+          what takes the file. Only a batch already in flight withdraws it. */}
+      <WorkspaceDropzone onDropFiles={files => void uploadFiles(files)} disabled={uploadProgress !== null} />
       <WorkspaceUploadProgressBar progress={uploadProgress} />
       {/* Keep action buttons above the switcher when this row wraps. */}
       <div className="flex flex-wrap-reverse justify-between items-center gap-2 px-1.5 pb-1.5">
@@ -351,7 +330,7 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
                 <PlusIcon className="h-5 w-5 text-neutral3 hover:text-neutral6" />
               </Button>
             )}
-            {canExecute && canUpload && (
+            {canExecute && (
               <Button
                 variant="default"
                 size="icon-md"
@@ -363,7 +342,6 @@ const ComposerActionRow = ({ canExecute = true, agentId, threadId, showModelSwit
                 <Upload className="h-5 w-5 text-neutral3 hover:text-neutral6" />
               </Button>
             )}
-            {canExecute && <SpeechInput agentId={agentId} />}
           </ButtonsGroup>
           <ComposerSendButton canExecute={canExecute} />
         </div>

@@ -9,9 +9,10 @@ export interface WorkspaceDropzoneProps {
 
 /**
  * Full-viewport drop target: dragging files anywhere over the page toggles an
- * overlay; releasing uploads them to the durable workspace (the same flow as
- * the composer's upload button — NOT chat attachments). Uses a depth counter
- * because dragenter/dragleave fire for every child element crossed.
+ * overlay; releasing uploads them to the durable workspace and attaches each
+ * one to the message as a chip, exactly as the composer's upload and "+"
+ * buttons do. Uses a depth counter because dragenter/dragleave fire for every
+ * child element crossed.
  */
 export const WorkspaceDropzone = ({ onDropFiles, disabled }: WorkspaceDropzoneProps) => {
   const [dragDepth, setDragDepth] = useState(0);
@@ -64,9 +65,7 @@ export const WorkspaceDropzone = ({ onDropFiles, disabled }: WorkspaceDropzonePr
       <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-accent1 bg-surface2 px-12 py-10 pointer-events-none">
         <UploadCloud className="text-accent1" size={40} />
         <p className="font-medium">Drop files to upload to the workspace</p>
-        <p className="text-ui-sm text-neutral3">
-          Files land in the shared workspace and the path is added to your message
-        </p>
+        <p className="text-ui-sm text-neutral3">Files land in the workspace and attach to your message</p>
       </div>
     </div>
   );
