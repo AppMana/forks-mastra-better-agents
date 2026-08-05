@@ -144,6 +144,11 @@ export const ToolIconRowView = ({ parts, isStreamingTail, children }: ToolIconRo
 
   return (
     <div className="mb-4" data-testid="part-run">
+      {/* One continuous flow, like letters in a paragraph: the icons fill the
+          width and wrap onto the next line when they run out of it, so the
+          same run redistributes as the pane is resized. The staircase was
+          never this wrapping — it was the run being cut into separate rows
+          upstream, in groupPartsIntoRuns. */}
       <div className="flex flex-wrap items-center gap-1">
         {parts.map((part, index) => {
           if (isHiddenRunPart(part)) return null;

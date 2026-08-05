@@ -1,4 +1,5 @@
 import { ToolsIcon } from '@mastra/playground-ui';
+import { isArgsTextIncomplete } from '../streaming-args';
 import { ToolResultView } from '../tool-result-view';
 import { BackgroundTaskMetadataDialogTrigger } from './background-task-metadata-dialog';
 import { BadgeWrapper } from './badge-wrapper';
@@ -10,6 +11,8 @@ import type { MessageMetadata } from '@/lib/ai-ui/messages/message-metadata';
 export interface ToolBadgeProps extends Omit<ToolApprovalButtonsProps, 'toolCalled'> {
   toolName: string;
   args: Record<string, unknown> | string;
+  /** Raw argument JSON as streamed; unparseable while the model is still writing it. */
+  argsText?: string;
   result: any;
   metadata?: MessageMetadata;
   toolOutput: Array<{ toolId: string }>;
@@ -21,6 +24,7 @@ export interface ToolBadgeProps extends Omit<ToolApprovalButtonsProps, 'toolCall
 export const ToolBadge = ({
   toolName,
   args,
+  argsText,
   result,
   metadata,
   toolOutput,
@@ -38,11 +42,19 @@ export const ToolBadge = ({
   // output.
   let argSlot = null;
 
-  try {
-    const { __mastraMetadata: _, _background, ...formattedArgs } = typeof args === 'object' ? args : JSON.parse(args);
-    argSlot = <ToolResultView value={formattedArgs} data-testid="tool-args" />;
-  } catch {
-    argSlot = <ToolResultView value={args as string} data-testid="tool-args" />;
+  if (isArgsTextIncomplete(argsText)) {
+    // The arguments are half-written: pretty-printing the partial parse would
+    // show a JSON envelope whose one interesting value is a truncated string
+    // with escaped newlines. The raw text is what is actually arriving, so show
+    // that, and switch to the formatted arguments when the call lands.
+    argSlot = <ToolResultView value={argsText} emptyLabel="Writing arguments…" data-testid="tool-args" />;
+  } else {
+    try {
+      const { __mastraMetadata: _, _background, ...formattedArgs } = typeof args === 'object' ? args : JSON.parse(args);
+      argSlot = <ToolResultView value={formattedArgs} data-testid="tool-args" />;
+    } catch {
+      argSlot = <ToolResultView value={args as string} data-testid="tool-args" />;
+    }
   }
 
   const resultSlot = <ToolResultView value={result} data-testid="tool-result" />;

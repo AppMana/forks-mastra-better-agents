@@ -3,6 +3,7 @@ import { Badge, Button, Icon, StreamTailPreview, cn } from '@mastra/playground-u
 import { CheckIcon, ChevronUpIcon, CopyIcon, TerminalSquare } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCopyToClipboard } from '../../hooks/use-copy-to-clipboard';
+import { isArgsTextIncomplete } from '../streaming-args';
 import type { ToolApprovalButtonsProps } from './tool-approval-buttons';
 import { ToolApprovalButtons } from './tool-approval-buttons';
 import { WORKSPACE_TOOLS } from '@/domains/workspace/constants';
@@ -51,6 +52,8 @@ const getStatusColor = (status?: string) => {
 export interface SandboxExecutionBadgeProps extends Omit<ToolApprovalButtonsProps, 'toolCalled'> {
   toolName: string;
   args: Record<string, unknown> | string;
+  /** Raw argument JSON as streamed; unparseable while the command is still being written. */
+  argsText?: string;
   result: any;
   metadata?: MessageMetadata;
   toolCalled?: boolean;
@@ -112,6 +115,7 @@ const TerminalHeader = ({
 export const SandboxExecutionBadge = ({
   toolName,
   args,
+  argsText,
   result,
   metadata,
   toolCallId,
@@ -202,8 +206,20 @@ export const SandboxExecutionBadge = ({
   // survive a page refresh, so the result is the only option on reload.
   const hasStreamingContent = streamingSource.length > 0;
   const resultText = typeof result === 'string' ? result : '';
-  const previewSource: string | string[] = hasStreamingContent ? streamingSource : resultText;
   const hasOutput = hasStreamingContent || resultText.length > 0;
+
+  // A model writing a heredoc spends seconds emitting the `command` argument
+  // before anything executes. That growing script is the only thing to watch,
+  // and it does not fit the single-line header, so it goes through the same
+  // bounded preview the output will use — the region simply changes what it is
+  // tailing once the command starts producing output.
+  const isCommandStreaming = isArgsTextIncomplete(argsText) && !hasOutput;
+
+  const previewSource: string | string[] = hasStreamingContent
+    ? streamingSource
+    : isCommandStreaming
+      ? commandDisplay
+      : resultText;
 
   const displayName =
     toolName === WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND
@@ -285,11 +301,11 @@ export const SandboxExecutionBadge = ({
       {/* Content area */}
       {!isCollapsed && (
         <div className="pt-2">
-          {(hasOutput || commandDisplay) && (
+          {(hasOutput || commandDisplay || isCommandStreaming) && (
             <StreamTailPreview
               source={previewSource}
               header={
-                commandDisplay ? (
+                commandDisplay && !isCommandStreaming ? (
                   <TerminalHeader
                     command={commandDisplay}
                     onCopy={hasOutput ? onCopy : undefined}
@@ -297,9 +313,9 @@ export const SandboxExecutionBadge = ({
                   />
                 ) : undefined
               }
-              isStreaming={isRunning}
+              isStreaming={isRunning || isCommandStreaming}
               done={isStreamingComplete}
-              emptyLabel={isRunning ? 'Waiting for output…' : 'No output'}
+              emptyLabel={isCommandStreaming ? 'Writing command…' : isRunning ? 'Waiting for output…' : 'No output'}
               maxHeight="20rem"
               data-testid="sandbox-execution-output"
             />

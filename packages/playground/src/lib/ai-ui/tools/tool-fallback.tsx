@@ -37,7 +37,7 @@ export const ToolFallback = ({ toolName, result, args, ...props }: ToolFallbackP
   );
 };
 
-const ToolFallbackInner = ({ toolName, result, args, metadata, toolCallId, ...props }: ToolFallbackProps) => {
+const ToolFallbackInner = ({ toolName, result, args, argsText, metadata, toolCallId, ...props }: ToolFallbackProps) => {
   // All hooks must be called unconditionally before any conditional returns
   const browserCtx = useBrowserToolCallsSafe();
   const isBrowser = isBrowserTool(toolName);
@@ -156,6 +156,7 @@ const ToolFallbackInner = ({ toolName, result, args, metadata, toolCallId, ...pr
       <ToolBadge
         toolName={isAgent ? agentToolName : isWorkflow ? workflowToolName : toolName}
         args={args}
+        argsText={argsText}
         result={result}
         toolOutput={[]}
         metadata={metadata}
@@ -251,6 +252,7 @@ const ToolFallbackInner = ({ toolName, result, args, metadata, toolCallId, ...pr
       <SandboxExecutionBadge
         toolName={toolName}
         args={args}
+        argsText={argsText}
         result={result}
         metadata={metadata}
         toolCallId={toolCallId}
@@ -287,6 +289,7 @@ const ToolFallbackInner = ({ toolName, result, args, metadata, toolCallId, ...pr
       <ToolBadge
         toolName={toolName}
         args={args}
+        argsText={argsText}
         result={result}
         toolOutput={result?.toolOutput || []}
         metadata={metadata}

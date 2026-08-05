@@ -35,20 +35,32 @@ export function isRunPart(part: PartLike): boolean {
   return part.type === 'tool-call' || part.type === 'reasoning';
 }
 
+/** Data parts with a renderer in assistant-message.tsx. The rest draw nothing. */
+const RENDERED_DATA_PARTS: ReadonlySet<string> = new Set(['signal', 'attachment']);
+
+/** Part types that put something on screen in their own right. */
+const VISIBLE_PART_TYPES: ReadonlySet<string> = new Set(['text', 'tool-call', 'reasoning', 'source', 'file', 'image']);
+
 /**
- * Parts that render nothing (ToolFallback returns null for them) get no icon
- * in the row — an icon that expands to an empty panel would be a dead control.
- * They still stay inside the run so they don't split one row into two.
+ * Parts that render nothing get no icon in the row — an icon that expands to an
+ * empty panel would be a dead control. They stay inside the run so they cannot
+ * split one row into two.
  *
- * Whitespace-only text is here too: models routinely emit an empty text part
- * between tool calls, and treating those as breakers shredded one logical run
- * into a stack of one- and two-icon rows — which read as broken columns, the
- * opposite of the single flowing strip this exists to provide.
+ * This is the whole of the staircase bug. A sandbox command emits a stream of
+ * `data-sandbox-stdout` parts while it runs, and `assistant-message.tsx` maps
+ * only `signal` and `attachment` to components — every other data part draws
+ * nothing whatsoever, yet each one used to close the open run. One
+ * uninterrupted sequence of tool calls came out as a column of two- and
+ * four-icon rows. Whitespace-only text and step markers are the same story.
+ *
+ * So the rule is invisibility, not type: only a part the user can actually see
+ * is allowed to end a run.
  */
 export function isHiddenRunPart(part: PartLike): boolean {
   if (part.type === 'tool-call' && part.toolName === 'updateWorkingMemory') return true;
-  if (part.type === 'text' && (part.text ?? '').trim() === '') return true;
-  return false;
+  if (part.type === 'text') return (part.text ?? '').trim() === '';
+  if (part.type === 'data') return !RENDERED_DATA_PARTS.has(part.name ?? '');
+  return !VISIBLE_PART_TYPES.has(part.type);
 }
 
 /**

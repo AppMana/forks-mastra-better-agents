@@ -162,6 +162,30 @@ function isRegisteredWorkspaceVisible(mastra: any, workspaceId: string, requestC
 }
 
 /**
+ * The filesystem for THIS request.
+ *
+ * A workspace may configure its filesystem as a per-request RESOLVER
+ * (`new Workspace({ filesystem: ({ requestContext }) => ... })`), which is how
+ * a deployment gives one user's tools a filesystem standing in the current
+ * conversation's directory. The static `workspace.filesystem` getter is
+ * `undefined` for those, so reading it here answered "no workspace filesystem
+ * configured" for a workspace whose file TOOLS were working perfectly — the
+ * panel and the agent would have been looking at two different filesystems, or
+ * at none. Every route resolves through this instead, exactly as
+ * `createWorkspaceTools` does.
+ */
+async function requestFilesystem(
+  workspace: Workspace | undefined,
+  requestContext?: RequestContext,
+): Promise<WorkspaceFilesystem | undefined> {
+  if (!workspace) return undefined;
+  if (requestContext && typeof (workspace as any).resolveFilesystem === 'function') {
+    return (workspace as any).resolveFilesystem({ requestContext });
+  }
+  return workspace.filesystem as WorkspaceFilesystem | undefined;
+}
+
+/**
  * Get a workspace by ID from Mastra's workspace registry.
  *
  * Backwards compatible: Falls back to searching through agents if
@@ -432,6 +456,7 @@ export const GET_WORKSPACE_ROUTE = createRoute({
   handler: async ({ mastra, workspaceId, requestContext }) => {
     try {
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
+      const filesystem = await requestFilesystem(workspace, requestContext);
 
       if (!workspace) {
         return {
@@ -439,7 +464,7 @@ export const GET_WORKSPACE_ROUTE = createRoute({
         };
       }
 
-      const fsInfo = await workspace.filesystem?.getInfo?.();
+      const fsInfo = await filesystem?.getInfo?.();
 
       // Build mounts array for CompositeFilesystem
       let mounts:
@@ -453,9 +478,9 @@ export const GET_WORKSPACE_ROUTE = createRoute({
           }>
         | undefined;
 
-      if (isCompositeFilesystem(workspace.filesystem)) {
+      if (isCompositeFilesystem(filesystem)) {
         mounts = [];
-        for (const [mountPath, mountFs] of workspace.filesystem.mounts) {
+        for (const [mountPath, mountFs] of filesystem.mounts) {
           try {
             const info = await mountFs.getInfo?.();
             mounts.push({
@@ -483,7 +508,7 @@ export const GET_WORKSPACE_ROUTE = createRoute({
         name: workspace.name,
         status: workspace.status,
         capabilities: {
-          hasFilesystem: !!workspace.filesystem,
+          hasFilesystem: !!filesystem,
           hasSandbox: !!workspace.sandbox,
           canBM25: workspace.canBM25,
           canVector: workspace.canVector,
@@ -491,7 +516,7 @@ export const GET_WORKSPACE_ROUTE = createRoute({
           hasSkills: !!workspace.skills,
         },
         safety: {
-          readOnly: workspace.filesystem?.readOnly ?? false,
+          readOnly: filesystem?.readOnly ?? false,
         },
         filesystem: fsInfo
           ? {
@@ -536,19 +561,20 @@ export const WORKSPACE_FS_READ_ROUTE = createRoute({
       }
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
-      if (!workspace?.filesystem) {
+      const filesystem = await requestFilesystem(workspace, requestContext);
+      if (!filesystem) {
         throw new HTTPException(404, { message: 'No workspace filesystem configured' });
       }
 
       const decodedPath = decodeURIComponent(path);
 
       // Check if path exists
-      if (!(await workspace.filesystem.exists(decodedPath))) {
+      if (!(await filesystem.exists(decodedPath))) {
         throw new HTTPException(404, { message: `Path "${decodedPath}" not found` });
       }
 
       // Read file content
-      const content = await workspace.filesystem.readFile(decodedPath, {
+      const content = await filesystem.readFile(decodedPath, {
         encoding: (encoding as BufferEncoding) || 'utf-8',
       });
 
@@ -582,11 +608,12 @@ export const WORKSPACE_FS_WRITE_ROUTE = createRoute({
       }
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
-      if (!workspace?.filesystem) {
+      const filesystem = await requestFilesystem(workspace, requestContext);
+      if (!filesystem) {
         throw new HTTPException(404, { message: 'No workspace filesystem configured' });
       }
 
-      if (workspace.filesystem?.readOnly) {
+      if (filesystem?.readOnly) {
         throw new HTTPException(403, { message: 'Workspace is in read-only mode' });
       }
 
@@ -598,7 +625,7 @@ export const WORKSPACE_FS_WRITE_ROUTE = createRoute({
         fileContent = Buffer.from(content, 'base64');
       }
 
-      await workspace.filesystem.writeFile(decodedPath, fileContent, { recursive: recursive ?? true });
+      await filesystem.writeFile(decodedPath, fileContent, { recursive: recursive ?? true });
 
       return {
         success: true,
@@ -629,7 +656,8 @@ export const WORKSPACE_FS_LIST_ROUTE = createRoute({
       }
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
-      if (!workspace?.filesystem) {
+      const filesystem = await requestFilesystem(workspace, requestContext);
+      if (!filesystem) {
         return {
           path: decodeURIComponent(path),
           entries: [],
@@ -640,11 +668,11 @@ export const WORKSPACE_FS_LIST_ROUTE = createRoute({
       const decodedPath = decodeURIComponent(path);
 
       // Check if path exists
-      if (!(await workspace.filesystem.exists(decodedPath))) {
+      if (!(await filesystem.exists(decodedPath))) {
         throw new HTTPException(404, { message: `Path "${decodedPath}" not found` });
       }
 
-      const entries = await workspace.filesystem.readdir(decodedPath, { recursive });
+      const entries = await filesystem.readdir(decodedPath, { recursive });
 
       return {
         path: decodedPath,
@@ -675,18 +703,19 @@ export const WORKSPACE_FS_DELETE_ROUTE = createRoute({
       }
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
-      if (!workspace?.filesystem) {
+      const filesystem = await requestFilesystem(workspace, requestContext);
+      if (!filesystem) {
         throw new HTTPException(404, { message: 'No workspace filesystem configured' });
       }
 
-      if (workspace.filesystem?.readOnly) {
+      if (filesystem?.readOnly) {
         throw new HTTPException(403, { message: 'Workspace is in read-only mode' });
       }
 
       const decodedPath = decodeURIComponent(path);
 
       // Check if path exists (unless force is true)
-      const exists = await workspace.filesystem.exists(decodedPath);
+      const exists = await filesystem.exists(decodedPath);
       if (!exists && !force) {
         throw new HTTPException(404, { message: `Path "${decodedPath}" not found` });
       }
@@ -694,9 +723,9 @@ export const WORKSPACE_FS_DELETE_ROUTE = createRoute({
       if (exists) {
         // Try to delete as file first, then as directory
         try {
-          await workspace.filesystem.deleteFile(decodedPath, { force });
+          await filesystem.deleteFile(decodedPath, { force });
         } catch {
-          await workspace.filesystem.rmdir(decodedPath, { recursive, force });
+          await filesystem.rmdir(decodedPath, { recursive, force });
         }
       }
 
@@ -729,17 +758,18 @@ export const WORKSPACE_FS_MKDIR_ROUTE = createRoute({
       }
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
-      if (!workspace?.filesystem) {
+      const filesystem = await requestFilesystem(workspace, requestContext);
+      if (!filesystem) {
         throw new HTTPException(404, { message: 'No workspace filesystem configured' });
       }
 
-      if (workspace.filesystem?.readOnly) {
+      if (filesystem?.readOnly) {
         throw new HTTPException(403, { message: 'Workspace is in read-only mode' });
       }
 
       const decodedPath = decodeURIComponent(path);
 
-      await workspace.filesystem.mkdir(decodedPath, { recursive: recursive ?? true });
+      await filesystem.mkdir(decodedPath, { recursive: recursive ?? true });
 
       return {
         success: true,
@@ -779,18 +809,19 @@ export const WORKSPACE_FS_OPERATION_ROUTE = createRoute({
       }
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
-      if (!workspace?.filesystem) {
+      const filesystem = await requestFilesystem(workspace, requestContext);
+      if (!filesystem) {
         throw new HTTPException(404, { message: 'No workspace filesystem configured' });
       }
 
-      if (workspace.filesystem?.readOnly) {
+      if (filesystem?.readOnly) {
         throw new HTTPException(403, { message: 'Workspace is in read-only mode' });
       }
 
       const decodedSourcePath = decodeURIComponent(sourcePath);
       const decodedDestinationPath = decodeURIComponent(destinationPath);
 
-      if (!(await workspace.filesystem.exists(decodedSourcePath))) {
+      if (!(await filesystem.exists(decodedSourcePath))) {
         throw new HTTPException(404, { message: `Path "${decodedSourcePath}" not found` });
       }
 
@@ -802,11 +833,11 @@ export const WORKSPACE_FS_OPERATION_ROUTE = createRoute({
       switch (operation) {
         case 'copy':
         case 'duplicate':
-          await workspace.filesystem.copyFile(decodedSourcePath, decodedDestinationPath, options);
+          await filesystem.copyFile(decodedSourcePath, decodedDestinationPath, options);
           break;
         case 'move':
         case 'rename':
-          await workspace.filesystem.moveFile(decodedSourcePath, decodedDestinationPath, options);
+          await filesystem.moveFile(decodedSourcePath, decodedDestinationPath, options);
           break;
         default:
           throw new HTTPException(400, { message: `Unsupported operation "${operation}"` });
@@ -843,18 +874,19 @@ export const WORKSPACE_FS_STAT_ROUTE = createRoute({
       }
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
-      if (!workspace?.filesystem) {
+      const filesystem = await requestFilesystem(workspace, requestContext);
+      if (!filesystem) {
         throw new HTTPException(404, { message: 'No workspace filesystem configured' });
       }
 
       const decodedPath = decodeURIComponent(path);
 
       // Check if path exists
-      if (!(await workspace.filesystem.exists(decodedPath))) {
+      if (!(await filesystem.exists(decodedPath))) {
         throw new HTTPException(404, { message: `Path "${decodedPath}" not found` });
       }
 
-      const stat = await workspace.filesystem.stat(decodedPath);
+      const stat = await filesystem.stat(decodedPath);
 
       return {
         path: stat.path,
@@ -1007,6 +1039,7 @@ export const WORKSPACE_LIST_SKILLS_ROUTE = createRoute({
       requireWorkspaceV1Support();
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
+      const filesystem = await requestFilesystem(workspace, requestContext);
       const skills = workspace?.skills;
       if (!skills) {
         return { skills: [], isSkillsConfigured: false };
@@ -1025,10 +1058,10 @@ export const WORKSPACE_LIST_SKILLS_ROUTE = createRoute({
           // For skills installed via skills.sh, read source info from .meta.json.
           // Uses includes() because glob-discovered paths may have a leading slash
           // or be nested (e.g., '/.agents/skills/foo', '/src/.agents/skills/foo').
-          if (skillMeta.path.includes(SKILLS_SH_PATH_PREFIX) && workspace.filesystem) {
+          if (skillMeta.path.includes(SKILLS_SH_PATH_PREFIX) && filesystem) {
             try {
               const metaPath = `${skillMeta.path}/.meta.json`;
-              const metaContent = await workspace.filesystem.readFile(metaPath);
+              const metaContent = await filesystem.readFile(metaPath);
               const metaText = typeof metaContent === 'string' ? metaContent : metaContent.toString('utf-8');
               const meta = JSON.parse(metaText) as { owner?: string; repo?: string };
               if (meta.owner && meta.repo) {
@@ -1544,15 +1577,16 @@ export const WORKSPACE_SKILLS_SH_INSTALL_ROUTE = createRoute({
       requireWorkspaceV1Support();
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
+      const filesystem = await requestFilesystem(workspace, requestContext);
       if (!workspace) {
         throw new HTTPException(404, { message: 'Workspace not found' });
       }
 
-      if (!workspace.filesystem) {
+      if (!filesystem) {
         throw new HTTPException(400, { message: 'Workspace filesystem not available' });
       }
 
-      if (workspace.filesystem.readOnly) {
+      if (filesystem.readOnly) {
         throw new HTTPException(403, { message: 'Workspace is read-only' });
       }
 
@@ -1566,11 +1600,11 @@ export const WORKSPACE_SKILLS_SH_INSTALL_ROUTE = createRoute({
 
       // Validate skill name to prevent path traversal
       const safeSkillId = assertSafeSkillName(result.skillId);
-      const installPath = buildSkillInstallPath(workspace.filesystem, safeSkillId, mount);
+      const installPath = buildSkillInstallPath(filesystem, safeSkillId, mount);
 
       // Ensure the skills directory exists
       try {
-        await workspace.filesystem.mkdir(installPath, { recursive: true });
+        await filesystem.mkdir(installPath, { recursive: true });
       } catch {
         // Directory might already exist
       }
@@ -1586,14 +1620,14 @@ export const WORKSPACE_SKILLS_SH_INSTALL_ROUTE = createRoute({
         if (safePath.includes('/')) {
           const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
           try {
-            await workspace.filesystem.mkdir(dirPath, { recursive: true });
+            await filesystem.mkdir(dirPath, { recursive: true });
           } catch {
             // Directory might already exist
           }
         }
 
         const content = file.encoding === 'base64' ? Buffer.from(file.content, 'base64') : file.content;
-        await workspace.filesystem.writeFile(filePath, content);
+        await filesystem.writeFile(filePath, content);
         filesWritten++;
       }
 
@@ -1605,7 +1639,7 @@ export const WORKSPACE_SKILLS_SH_INSTALL_ROUTE = createRoute({
         branch: result.branch,
         installedAt: new Date().toISOString(),
       };
-      await workspace.filesystem.writeFile(`${installPath}/.meta.json`, JSON.stringify(metadata, null, 2));
+      await filesystem.writeFile(`${installPath}/.meta.json`, JSON.stringify(metadata, null, 2));
       filesWritten++;
 
       // Surgically update the skills cache for the newly installed skill
@@ -1660,15 +1694,16 @@ export const WORKSPACE_SKILLS_SH_REMOVE_ROUTE = createRoute({
       requireWorkspaceV1Support();
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
+      const filesystem = await requestFilesystem(workspace, requestContext);
       if (!workspace) {
         throw new HTTPException(404, { message: 'Workspace not found' });
       }
 
-      if (!workspace.filesystem) {
+      if (!filesystem) {
         throw new HTTPException(400, { message: 'Workspace filesystem not available' });
       }
 
-      if (workspace.filesystem.readOnly) {
+      if (filesystem.readOnly) {
         throw new HTTPException(403, { message: 'Workspace is read-only' });
       }
 
@@ -1680,17 +1715,17 @@ export const WORKSPACE_SKILLS_SH_REMOVE_ROUTE = createRoute({
       // accidentally deleting a locally-authored skill with the same name.
       const allSkills = await workspace.skills?.list();
       const matchingSkill = allSkills?.find(s => s.name === safeSkillName && s.path.includes(SKILLS_SH_PATH_PREFIX));
-      const skillPath = matchingSkill?.path ?? buildSkillInstallPath(workspace.filesystem, safeSkillName);
+      const skillPath = matchingSkill?.path ?? buildSkillInstallPath(filesystem, safeSkillName);
 
       // Check if skill exists on filesystem
       try {
-        await workspace.filesystem.stat(skillPath);
+        await filesystem.stat(skillPath);
       } catch {
         throw new HTTPException(404, { message: `Skill "${skillName}" not found at ${skillPath}` });
       }
 
       // Delete the skill directory
-      await workspace.filesystem.rmdir(skillPath, { recursive: true });
+      await filesystem.rmdir(skillPath, { recursive: true });
 
       // Surgically remove the skill from the cache
       if (workspace.skills?.removeSkill) {
@@ -1733,15 +1768,16 @@ export const WORKSPACE_SKILLS_SH_UPDATE_ROUTE = createRoute({
       requireWorkspaceV1Support();
 
       const workspace = await getWorkspaceById(mastra, workspaceId, requestContext);
+      const filesystem = await requestFilesystem(workspace, requestContext);
       if (!workspace) {
         throw new HTTPException(404, { message: 'Workspace not found' });
       }
 
-      if (!workspace.filesystem) {
+      if (!filesystem) {
         throw new HTTPException(400, { message: 'Workspace filesystem not available' });
       }
 
-      if (workspace.filesystem.readOnly) {
+      if (filesystem.readOnly) {
         throw new HTTPException(403, { message: 'Workspace is read-only' });
       }
 
@@ -1775,8 +1811,8 @@ export const WORKSPACE_SKILLS_SH_UPDATE_ROUTE = createRoute({
         skillsToUpdate = [];
         const dirsToScan: string[] = [];
 
-        if (isCompositeFilesystem(workspace.filesystem)) {
-          for (const [mountPath, mountFs] of workspace.filesystem.mounts) {
+        if (isCompositeFilesystem(filesystem)) {
+          for (const [mountPath, mountFs] of filesystem.mounts) {
             if (!mountFs.readOnly) {
               dirsToScan.push(`${stripTrailingSlash(mountPath)}/${SKILLS_SH_DIR}`);
             }
@@ -1787,7 +1823,7 @@ export const WORKSPACE_SKILLS_SH_UPDATE_ROUTE = createRoute({
 
         for (const dir of dirsToScan) {
           try {
-            const entries = await workspace.filesystem.readdir(dir);
+            const entries = await filesystem.readdir(dir);
             for (const e of entries) {
               if (e.type === 'directory') {
                 skillsToUpdate.push({ name: e.name, basePath: dir });
@@ -1818,7 +1854,7 @@ export const WORKSPACE_SKILLS_SH_UPDATE_ROUTE = createRoute({
         const installPath = `${basePath}/${skill}`;
         const metaPath = `${installPath}/.meta.json`;
         try {
-          const metaContent = await workspace.filesystem.readFile(metaPath, { encoding: 'utf-8' });
+          const metaContent = await filesystem.readFile(metaPath, { encoding: 'utf-8' });
           const meta: SkillMetaFile = JSON.parse(metaContent as string);
 
           // Re-fetch skill files from the Skills API
@@ -1843,14 +1879,14 @@ export const WORKSPACE_SKILLS_SH_UPDATE_ROUTE = createRoute({
             if (safePath.includes('/')) {
               const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
               try {
-                await workspace.filesystem.mkdir(dirPath, { recursive: true });
+                await filesystem.mkdir(dirPath, { recursive: true });
               } catch {
                 // Directory might already exist
               }
             }
 
             const content = file.encoding === 'base64' ? Buffer.from(file.content, 'base64') : file.content;
-            await workspace.filesystem.writeFile(filePath, content);
+            await filesystem.writeFile(filePath, content);
             filesWritten++;
           }
 
@@ -1860,7 +1896,7 @@ export const WORKSPACE_SKILLS_SH_UPDATE_ROUTE = createRoute({
             branch: fetchResult.branch,
             installedAt: new Date().toISOString(),
           };
-          await workspace.filesystem.writeFile(metaPath, JSON.stringify(updatedMeta, null, 2));
+          await filesystem.writeFile(metaPath, JSON.stringify(updatedMeta, null, 2));
           filesWritten++;
 
           // Surgically update the skills cache for the updated skill

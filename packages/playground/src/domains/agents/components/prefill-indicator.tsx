@@ -12,11 +12,18 @@ export interface PrefillIndicatorViewProps {
  * generating it renders nothing: the streamed message is its own progress.
  * Same bar, type scale and colours as the workspace sandbox startup progress,
  * so the two waits read as one idiom.
+ *
+ * One line of status, above the bar, and nothing else. The phase hint used to
+ * be a second line below it, and in the queued phase the two said the same
+ * thing twice — "Waiting for the model…" over "The request is waiting for the
+ * model server." The label is the line worth keeping because it is the only
+ * one carrying live numbers; the hint is static prose that never changes
+ * within a phase. It is not rendered here at all, hover included.
  */
 export const PrefillIndicatorView = ({ progress }: PrefillIndicatorViewProps) => {
   if (!progress || progress.phase === 'generating') return null;
 
-  const { label, hint, percent } = progress;
+  const { label, percent } = progress;
 
   return (
     <div className="max-w-3xl w-full mx-auto px-4 pb-2" data-testid="prefill-progress" data-phase={progress.phase}>
@@ -41,7 +48,6 @@ export const PrefillIndicatorView = ({ progress }: PrefillIndicatorViewProps) =>
           style={percent === null ? undefined : { width: `${percent}%` }}
         />
       </div>
-      {hint && <p className="pt-1 text-ui-sm text-neutral3">{hint}</p>}
     </div>
   );
 };

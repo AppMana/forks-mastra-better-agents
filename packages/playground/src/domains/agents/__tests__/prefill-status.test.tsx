@@ -158,6 +158,41 @@ describe('PrefillIndicatorView', () => {
     expect(screen.getByTestId('prefill-progress')).toBeTruthy();
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBeNull();
   });
+
+  it('says it once: no second line restating the label under the bar', () => {
+    // The queued phase is where the doubling was loudest — "Waiting for the
+    // model…" sat directly above "The request is waiting for the model
+    // server.", which is the same sentence twice.
+    render(<PrefillIndicatorView progress={progressOf([])} />);
+
+    expect(screen.getByText('Waiting for the model…')).toBeTruthy();
+    expect(screen.queryByText('The request is waiting for the model server.')).toBeNull();
+  });
+
+  it('shows only the live line while prefilling, not the standing explanation', () => {
+    render(<PrefillIndicatorView progress={progressOf([slot()])} />);
+
+    expect(screen.getByText('Reading your prompt… 22,488 tokens read')).toBeTruthy();
+    expect(
+      screen.queryByText('The whole prompt is read before the first word appears. A large document can take minutes.'),
+    ).toBeNull();
+  });
+
+  it('does not render the phase hint anywhere, hover included', () => {
+    // Not visible text, and not a title or aria description either: the hint
+    // is simply not part of this view in any phase that has one.
+    const stalled = advancePrefill([slot()], { taskId: 16644, tokens: 22488, changedAt: 0 }, PREFILL_STALL_AFTER_MS);
+
+    for (const progress of [progressOf([]), progressOf([slot()]), stalled.progress]) {
+      const { hint } = progress;
+      expect(hint).toBeTruthy();
+
+      const { container, unmount } = render(<PrefillIndicatorView progress={progress} />);
+      expect(container.innerHTML).not.toContain(hint!);
+      expect(container.querySelector(`[title], [aria-description]`)).toBeNull();
+      unmount();
+    }
+  });
 });
 
 describe('PrefillIndicator', () => {

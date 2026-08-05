@@ -677,6 +677,62 @@ describe('Workspace Handlers', () => {
     });
   });
 
+  describe('a per-request filesystem resolver', () => {
+    /**
+     * A workspace whose filesystem is resolved per request — how a deployment
+     * gives one user's agent a filesystem standing in the current
+     * conversation's directory. The static getter is undefined for these, so
+     * every route has to resolve, or the panel answers "no workspace
+     * filesystem configured" for a workspace whose file tools work.
+     */
+    function createResolverWorkspace(id: string, files: Map<string, string>): Workspace {
+      const filesystem = createMockFilesystem(files, {});
+      return new Workspace({ id, name: `Workspace ${id}`, filesystem: () => filesystem });
+    }
+
+    it('lists through the resolved filesystem', async () => {
+      const workspace = createResolverWorkspace('resolver-workspace', new Map([['/dir/file.txt', 'content']]));
+      const mastra = createMastra(workspace);
+
+      const result = await WORKSPACE_FS_LIST_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+        workspaceId: 'resolver-workspace',
+        path: '/dir',
+      });
+
+      // An empty listing with an "error" is how this route reports a missing
+      // filesystem — indistinguishable, in the panel, from an empty directory.
+      expect(result.error).toBeUndefined();
+      expect(result.path).toBe('/dir');
+      expect(result.entries?.map(entry => entry.name)).toContain('file.txt');
+    });
+
+    it('reads through the resolved filesystem', async () => {
+      const workspace = createResolverWorkspace('resolver-workspace', new Map([['/dir/file.txt', 'content']]));
+      const mastra = createMastra(workspace);
+
+      const result = await WORKSPACE_FS_READ_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+        workspaceId: 'resolver-workspace',
+        path: '/dir/file.txt',
+      });
+
+      expect(result.content).toBe('content');
+    });
+
+    it('reports the workspace as having a filesystem', async () => {
+      const workspace = createResolverWorkspace('resolver-workspace', new Map());
+      const mastra = createMastra(workspace);
+
+      const result = await GET_WORKSPACE_ROUTE.handler({
+        ...createTestServerContext({ mastra }),
+        workspaceId: 'resolver-workspace',
+      });
+
+      expect(result.capabilities?.hasFilesystem).toBe(true);
+    });
+  });
+
   describe('WORKSPACE_FS_DELETE_ROUTE', () => {
     it('should delete file', async () => {
       const files = new Map([['/test.txt', 'content']]);

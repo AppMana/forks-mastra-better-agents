@@ -1,128 +1,84 @@
-import type { AttachmentState } from '@assistant-ui/react';
 import { AttachmentPrimitive, ComposerPrimitive, useAttachment } from '@assistant-ui/react';
-import { Button, Spinner, Tooltip, TooltipContent, TooltipTrigger, Icon, fileToBase64 } from '@mastra/playground-ui';
+import { Button, Tooltip, TooltipContent, TooltipTrigger, Icon } from '@mastra/playground-ui';
 import { TooltipProvider } from '@radix-ui/react-tooltip';
-import { File as FileIcon, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 
 import { useAttachmentSrc } from '../hooks/use-attachment-src';
 import { useHasAttachments } from '../hooks/use-has-attachments';
-import { useLoadBrowserFile } from '../hooks/use-load-browser-file';
-import { ImageEntry, TxtEntry, PdfEntry } from './attachment-preview-dialog';
+import { ImageEntry } from './attachment-preview-dialog';
+import { FileTypeIcon } from './file-type-icon';
+
+export interface AttachmentTileProps {
+  name: string;
+  contentType?: string;
+  /** A picture to show instead of an icon; only images ever have one. */
+  src?: string;
+}
 
 /**
- * How much of an attachment the composer will read into memory for a preview.
+ * The chip body: a 64px square saying what kind of file this is, with the
+ * file's name under it.
  *
- * Every attached file is a `document` now, whatever its type, because every one
- * of them is uploaded rather than inlined. The thumbnail is the only thing left
- * that still touches the bytes, so it needs the size guard the old per-type
- * adapters used to provide: `file.text()` on a video, or base64 on a
- * hundred-megabyte PDF, freezes the tab for a picture the size of a postage
- * stamp.
+ * Only images are drawn from their own bytes. Everything else gets its format
+ * icon, because the thing that fits in 64px is the *kind* of file, not its
+ * contents: a page of a PDF or the first few lines of a CSV rendered that small
+ * is an illegible grey smudge, identical for every document the user attaches.
+ * The full contents are a click away in the preview dialog either way.
  */
-const PREVIEW_BYTE_LIMIT = 2 * 1024 * 1024;
-
-/** Types whose bytes are worth reading for a preview, and cheap to render. */
-const TEXT_PREVIEW_TYPE = /^text\/|json|xml|csv|yaml|javascript|typescript|markdown|x-sh$/i;
-
-const isSmallEnoughToPreview = (file?: File) => !!file && file.size <= PREVIEW_BYTE_LIMIT;
-
-const canPreviewAsText = (file?: File) => isSmallEnoughToPreview(file) && TEXT_PREVIEW_TYPE.test(file!.type);
-
-/** A file the composer will name but not open. */
-const ComposerFileAttachment = () => (
-  <div className="flex items-center justify-center h-full w-full">
-    <FileIcon className="text-neutral3" />
+export const AttachmentTile = ({ name, contentType, src }: AttachmentTileProps) => (
+  <div className="w-16">
+    <div className="flex size-16 items-center justify-center overflow-hidden rounded-lg bg-surface3 border border-border1">
+      {src ? <ImageEntry src={src} /> : <FileTypeIcon name={name} contentType={contentType} className="size-6" />}
+    </div>
+    {/* Monospace: these are paths as much as labels, and a fixed advance width
+        is what makes `report_v2.csv` and `report_v3.csv` distinguishable at
+        10px. Truncated rather than wrapped so a long name cannot push the
+        composer around; the full one is on the tooltip and the title. */}
+    <p
+      title={name}
+      data-testid="attachment-name"
+      className="mt-1 w-16 truncate text-center font-mono text-ui-xs leading-ui-xs text-neutral3"
+    >
+      {name}
+    </p>
   </div>
 );
 
-const ComposerTxtAttachment = ({ document }: { document: AttachmentState }) => {
-  const { isLoading, text } = useLoadBrowserFile(document.file);
-
-  return (
-    <div className="flex items-center justify-center h-full w-full">
-      {isLoading ? <Spinner /> : <TxtEntry data={text} />}
-    </div>
-  );
-};
-
-const ComposerPdfAttachment = ({ document }: { document: AttachmentState }) => {
-  const [state, setState] = useState({ isLoading: false, text: '' });
-  useEffect(() => {
-    let isCanceled = false;
-
-    const run = async () => {
-      if (!document.file) return;
-      setState(s => ({ ...s, isLoading: true }));
-      const text = await fileToBase64(document.file);
-      if (isCanceled) {
-        return;
-      }
-      setState(s => ({ ...s, isLoading: false, text }));
-    };
-    void run();
-
-    return () => {
-      isCanceled = true;
-    };
-  }, [document]);
-
-  const isUrl = document.file?.name.startsWith('https://');
-
-  return (
-    <div className="flex items-center justify-center h-full w-full">
-      {state.isLoading ? <Spinner /> : <PdfEntry data={state.text} url={isUrl ? document.file?.name : undefined} />}
-    </div>
-  );
-};
-
 const AttachmentThumbnail = () => {
-  const isImage = useAttachment(a => a.type === 'image');
-  const document = useAttachment(a => (a.type === 'document' ? a : undefined));
-  const src = useAttachmentSrc();
+  const name = useAttachment(a => a.name);
+  const contentType = useAttachment(a => a.contentType);
+  const isImage = useAttachment(a => a.type === 'image' || !!a.contentType?.startsWith('image/'));
   const canRemove = useAttachment(a => a.source !== 'message');
-  const isUrl = document?.file?.name.startsWith('https://');
-  const actualSrc = isUrl ? document?.file?.name : src;
+  const src = useAttachmentSrc();
+  // A URL attachment carries its target as the name, and that URL is the only
+  // thing that can be shown for it: there are no local bytes to make a blob
+  // from. See `urlAttachmentTarget` in the upload adapter.
+  const isUrl = name.startsWith('https://');
+  const imageSrc = isUrl ? name : src;
 
   return (
-    <>
-      <div className="relative">
-        <TooltipProvider>
-          <Tooltip>
-            <AttachmentPrimitive.Root>
-              <TooltipTrigger asChild>
-                <div className="overflow-hidden size-16 rounded-lg bg-surface3 border border-border1 ">
-                  {/* An image that is too large, or the wrong format, to show
-                      the model is still an image to the user: the thumbnail
-                      comes from an object URL, which costs nothing to make at
-                      any file size. */}
-                  {isImage || document?.contentType?.startsWith('image/') ? (
-                    <ImageEntry src={actualSrc ?? ''} />
-                  ) : document?.contentType === 'application/pdf' ? (
-                    isSmallEnoughToPreview(document.file) ? (
-                      <ComposerPdfAttachment document={document} />
-                    ) : (
-                      <ComposerFileAttachment />
-                    )
-                  ) : document ? (
-                    canPreviewAsText(document.file) ? (
-                      <ComposerTxtAttachment document={document} />
-                    ) : (
-                      <ComposerFileAttachment />
-                    )
-                  ) : null}
-                </div>
-              </TooltipTrigger>
-            </AttachmentPrimitive.Root>
-            <TooltipContent side="top">
-              <AttachmentPrimitive.Name />
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+    <div className="relative">
+      <TooltipProvider>
+        <Tooltip>
+          <AttachmentPrimitive.Root>
+            <TooltipTrigger asChild>
+              <div>
+                <AttachmentTile
+                  name={name}
+                  contentType={contentType}
+                  src={isImage && imageSrc ? imageSrc : undefined}
+                />
+              </div>
+            </TooltipTrigger>
+          </AttachmentPrimitive.Root>
+          <TooltipContent side="top">
+            <AttachmentPrimitive.Name />
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
-        {canRemove && <AttachmentRemove />}
-      </div>
-    </>
+      {canRemove && <AttachmentRemove />}
+    </div>
   );
 };
 
@@ -151,7 +107,7 @@ export const ComposerAttachments = () => {
   return (
     <div className="absolute bottom-full inset-x-0 px-2" data-attachments-row>
       <div className="max-w-3xl w-full mx-auto overflow-x-auto">
-        <div className="flex flex-row items-center gap-4 px-3 pt-3 pb-1">
+        <div className="flex flex-row items-start gap-4 px-3 pt-3 pb-1">
           <ComposerPrimitive.Attachments components={{ Attachment: AttachmentThumbnail }} />
         </div>
       </div>

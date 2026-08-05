@@ -42,6 +42,46 @@ describe('groupPartsIntoRuns', () => {
     expect(groups[1]?.groupKey).toBeUndefined();
   });
 
+  /**
+   * The staircase the product owner saw: "2, then 4, then 4, then 4, then 1
+   * icon". A sandbox command emits `data-sandbox-stdout` parts while it runs,
+   * and those parts render nothing at all — only `signal` and `attachment`
+   * have renderers in assistant-message.tsx. Letting them close a run split
+   * one uninterrupted sequence of tool calls into a column of short rows.
+   */
+  it('keeps one run across the non-rendering data parts a sandbox command emits', () => {
+    const stdout = () => ({ type: 'data', name: 'sandbox-stdout' });
+    const exit = () => ({ type: 'data', name: 'sandbox-exit' });
+    const parts = [
+      tool('execute_command'),
+      stdout(),
+      stdout(),
+      exit(),
+      tool('read_file'),
+      reasoning(),
+      stdout(),
+      tool('edit_file'),
+    ];
+
+    const runs = groupPartsIntoRuns(parts).filter(g => g.groupKey !== undefined);
+
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.indices).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('still starts a new run after visible assistant text', () => {
+    const stdout = () => ({ type: 'data', name: 'sandbox-stdout' });
+    const parts = [tool('a'), stdout(), tool('b'), text(), tool('c'), stdout(), reasoning()];
+
+    const runs = groupPartsIntoRuns(parts).filter(g => g.groupKey !== undefined);
+
+    // Two runs, split only by the text — never by the invisible data parts.
+    expect(runs.map(r => r.indices)).toEqual([
+      [0, 1, 2],
+      [4, 5, 6],
+    ]);
+  });
+
   it('leaves text-only messages entirely ungrouped', () => {
     const groups = groupPartsIntoRuns([text(), text()]);
 
@@ -77,6 +117,20 @@ describe('isHiddenRunPart', () => {
   it('keeps ordinary tool calls and reasoning visible', () => {
     expect(isHiddenRunPart(tool('read_file'))).toBe(false);
     expect(isHiddenRunPart(reasoning())).toBe(false);
+  });
+
+  it('hides the data parts nothing renders, and only those', () => {
+    // assistant-message.tsx maps `signal` and `attachment` to components; a
+    // data part with no entry there renders nothing at all.
+    expect(isHiddenRunPart({ type: 'data', name: 'sandbox-stdout' })).toBe(true);
+    expect(isHiddenRunPart({ type: 'data', name: 'sandbox-stderr' })).toBe(true);
+    expect(isHiddenRunPart({ type: 'data', name: 'sandbox-exit' })).toBe(true);
+    expect(isHiddenRunPart({ type: 'data', name: 'signal' })).toBe(false);
+    expect(isHiddenRunPart({ type: 'data', name: 'attachment' })).toBe(false);
+  });
+
+  it('hides step markers, which are stream bookkeeping rather than content', () => {
+    expect(isHiddenRunPart({ type: 'step-start' })).toBe(true);
   });
 });
 

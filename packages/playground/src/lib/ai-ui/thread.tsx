@@ -61,7 +61,7 @@ export const Thread = ({ agentName, agentId, threadId, hasMemory, hasModelList, 
 
         <div
           ref={messagesContainerRef}
-          className="relative max-w-3xl w-full mx-auto px-4 pb-7 group-has-[[data-attachments-row]]/thread:pb-24"
+          className="relative max-w-3xl w-full mx-auto px-4 pb-7 group-has-[[data-attachments-row]]/thread:pb-28"
         >
           <BracketOverlay containerRef={messagesContainerRef} />
           <ThreadPrimitive.Messages

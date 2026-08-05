@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Where an upload lands, and what path the composer then announces.
+ * Where an upload lands, and what path the message then announces.
  *
  * These two have to be the same string. When they drifted apart, the agent was
  * told to open a path nothing had been written to; it spent its first several
@@ -12,38 +12,46 @@
  *
  * The announced path is therefore the server's answer, never a path the client
  * assembled from a directory constant and an assumed mount root: only the
- * server knows which volume subPath a sandbox mounts where.
+ * server knows which volume subPath a sandbox mounts where. It is asserted on
+ * the attachment the composer would send, which is where the path lives now —
+ * the composer's text carries the user's question and nothing else.
  */
 import { MastraReactProvider } from '@mastra/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkspacesListResponse } from '../../types';
-import { useWorkspaceUpload } from '../use-workspace-upload';
+import { useWorkspaceFileUploader, useWorkspaceUpload } from '../use-workspace-upload';
+import type { ComposerHarness } from './composer-harness';
+import { createComposerHarness } from './composer-harness';
+import { WorkspaceUploadAttachmentAdapter } from '@/lib/ai-ui/attachments/workspace-upload-adapter';
 import { server } from '@/test/msw-server';
 
 const BASE_URL = 'http://localhost:4111';
 const WORKSPACE_ID = 'ws-1';
 
+const TYPED = 'give me a summary of the contents of this file';
+
+const composer = vi.hoisted(() => ({ current: undefined as ComposerHarness | undefined }));
+
 const toastError = vi.fn<(message: string) => void>();
 const toastSuccess = vi.fn<(message: string) => void>();
-const setText = vi.fn<(text: string) => void>();
 
 vi.mock('@mastra/playground-ui', () => ({
   toast: {
     error: (message: string) => toastError(message),
     success: (message: string) => toastSuccess(message),
+    info: (message: string) => message,
   },
 }));
 
 vi.mock('@assistant-ui/react', () => ({
-  useComposerRuntime: () => ({
-    getState: () => ({ text: 'give me a summary of the contents of this file' }),
-    setText: (text: string) => setText(text),
-  }),
+  useComposer: () => false,
+  useComposerRuntime: () => composer.current!.runtime,
 }));
 
 const workspaces: WorkspacesListResponse = {
@@ -89,16 +97,37 @@ const spreadsheet = () => {
   return file;
 };
 
+/** The drop path with the real transport and the real attachment adapter. */
 const renderUpload = async () => {
-  const { result } = renderHook(() => useWorkspaceUpload('document-analyst'), { wrapper: wrapper() });
+  const { result } = renderHook(
+    () => {
+      const { uploadFile } = useWorkspaceFileUploader('document-analyst');
+      const adapter = useMemo(
+        () => new WorkspaceUploadAttachmentAdapter(uploadFile, message => toastError(message)),
+        [uploadFile],
+      );
+      composer.current = useMemo(() => createComposerHarness(adapter, TYPED), [adapter]);
+      return useWorkspaceUpload('document-analyst');
+    },
+    { wrapper: wrapper() },
+  );
   await waitFor(() => expect(result.current.canUpload).toBe(true));
   return result;
+};
+
+/** The text the message would carry: every sent attachment's own content. */
+const announced = async () => {
+  const sent = await composer.current!.send();
+  return sent
+    .flatMap(attachment => attachment.content)
+    .map(part => (part.type === 'text' ? part.text : ''))
+    .join('\n');
 };
 
 afterEach(() => {
   toastError.mockReset();
   toastSuccess.mockReset();
-  setText.mockReset();
+  composer.current = undefined;
 });
 
 describe('useWorkspaceUpload announced path', () => {
@@ -122,12 +151,9 @@ describe('useWorkspaceUpload announced path', () => {
     const result = await renderUpload();
     await result.current.uploadFiles([spreadsheet()]);
 
-    await waitFor(() => expect(setText).toHaveBeenCalled());
-
-    const composed = setText.mock.calls.at(-1)![0];
-    expect(composed).toContain('/workspace/private/uploads/tables_workbook.xlsx');
-    // The question the user already typed survives; nothing else is added.
-    expect(composed).toContain('give me a summary of the contents of this file');
+    expect(await announced()).toContain('/workspace/private/uploads/tables_workbook.xlsx');
+    // The question the user already typed survives, untouched.
+    expect(composer.current!.runtime.getState().text).toBe(TYPED);
   });
 
   it('sends the file as multipart rather than base64 in a JSON body', async () => {
@@ -174,8 +200,7 @@ describe('useWorkspaceUpload announced path', () => {
     const result = await renderUpload();
     await result.current.uploadFiles([spreadsheet()]);
 
-    await waitFor(() => expect(setText).toHaveBeenCalled());
-    expect(setText.mock.calls.at(-1)![0]).toContain('/workspace/shared/uploads/tables_workbook.xlsx');
+    expect(await announced()).toContain('/workspace/shared/uploads/tables_workbook.xlsx');
   });
 
   /** Whatever the transport, the file's bytes never enter the message. */
@@ -199,12 +224,10 @@ describe('useWorkspaceUpload announced path', () => {
     const result = await renderUpload();
     await result.current.uploadFiles([spreadsheet()]);
 
-    await waitFor(() => expect(setText).toHaveBeenCalled());
-
-    const composed = setText.mock.calls.at(-1)![0];
+    const composed = [composer.current!.runtime.getState().text, await announced()].join('\n');
     // A path notice is short by construction; file contents are not.
     expect(composed.length).toBeLessThan(400);
-    expect(composed).not.toMatch(/PK/);
+    expect(composed).not.toMatch(/PK/);
     expect(composed).not.toMatch(/base64/i);
   });
 });

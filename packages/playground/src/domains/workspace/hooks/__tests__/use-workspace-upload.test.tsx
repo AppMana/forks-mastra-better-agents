@@ -4,35 +4,41 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
+import { useMemo } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkspacesListResponse } from '../../types';
-import { useWorkspaceUpload } from '../use-workspace-upload';
+import { useWorkspaceFileUploader, useWorkspaceUpload } from '../use-workspace-upload';
+import type { ComposerHarness } from './composer-harness';
+import { createComposerHarness } from './composer-harness';
+import { WorkspaceUploadAttachmentAdapter } from '@/lib/ai-ui/attachments/workspace-upload-adapter';
 import { server } from '@/test/msw-server';
 
 const BASE_URL = 'http://localhost:4111';
 const WORKSPACE_ID = 'ws-1';
 
+const composer = vi.hoisted(() => ({ current: undefined as ComposerHarness | undefined }));
+
 const toastError = vi.fn<(message: string) => void>();
 const toastSuccess = vi.fn<(message: string) => void>();
 
 // Thin seams only: the toast sink we assert on, and the composer runtime,
-// which is @assistant-ui context rather than our own code. Everything below
-// them — the upload hook, React Query, and the real @mastra/client-js
-// transport — runs for real against MSW, which is the point: the defect being
-// pinned lives in how the transport reads the response.
+// which is @assistant-ui context rather than our own code — and even that runs
+// the real attachment adapter. Everything below them — the upload hook, React
+// Query, and the real @mastra/client-js transport — runs for real against MSW,
+// which is the point: the defect being pinned lives in how the transport reads
+// the response.
 vi.mock('@mastra/playground-ui', () => ({
   toast: {
     error: (message: string) => toastError(message),
     success: (message: string) => toastSuccess(message),
+    info: (message: string) => message,
   },
 }));
 
 vi.mock('@assistant-ui/react', () => ({
-  useComposerRuntime: () => ({
-    getState: () => ({ text: '' }),
-    setText: () => {},
-  }),
+  useComposer: () => false,
+  useComposerRuntime: () => composer.current!.runtime,
 }));
 
 const workspaces: WorkspacesListResponse = {
@@ -74,7 +80,18 @@ const listWorkspaces = () => http.get(`${BASE_URL}/api/workspaces`, () => HttpRe
 const noAppUploadRoute = () => http.post('/app/workspace/upload', () => new HttpResponse(null, { status: 404 }));
 
 const renderUpload = async () => {
-  const { result } = renderHook(() => useWorkspaceUpload(), { wrapper: wrapper() });
+  const { result } = renderHook(
+    () => {
+      const { uploadFile } = useWorkspaceFileUploader();
+      const adapter = useMemo(
+        () => new WorkspaceUploadAttachmentAdapter(uploadFile, message => toastError(message)),
+        [uploadFile],
+      );
+      composer.current = useMemo(() => createComposerHarness(adapter), [adapter]);
+      return useWorkspaceUpload();
+    },
+    { wrapper: wrapper() },
+  );
   await waitFor(() => expect(result.current.canUpload).toBe(true));
   return result;
 };
@@ -94,6 +111,7 @@ const spreadsheet = () => {
 afterEach(() => {
   toastError.mockReset();
   toastSuccess.mockReset();
+  composer.current = undefined;
 });
 
 describe('useWorkspaceUpload error reporting', () => {

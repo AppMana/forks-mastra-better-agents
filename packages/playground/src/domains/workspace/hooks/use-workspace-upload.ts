@@ -2,7 +2,6 @@ import { useComposerRuntime } from '@assistant-ui/react';
 import { toast } from '@mastra/playground-ui';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  buildWorkspaceUploadNotice,
   completeWorkspaceUploadFile,
   selectWorkspaceForUpload,
   startWorkspaceUploadProgress,
@@ -10,14 +9,15 @@ import {
 } from '../workspace-upload';
 import type { WorkspaceUploadProgress } from '../workspace-upload';
 import { useWorkspaces, useWriteWorkspaceFileFromFile } from '.';
+import { reportAttachmentFailure } from '@/lib/ai-ui/hooks/use-composer-add-attachment';
 
 /**
  * One file, uploaded the one way.
  *
- * Split out of `useWorkspaceUpload` so the composer's "+" attachment adapter —
- * which uploads a single file at a time and has no composer text to inject
- * into — can reuse the transport, the workspace selection and the announced
- * path instead of growing a second copy of them.
+ * Split out of `useWorkspaceUpload` so the composer's attachment adapter —
+ * which uploads one file at a time, whichever gesture offered it — can reuse
+ * the transport, the workspace selection and the announced path instead of
+ * growing a second copy of them.
  */
 export function useWorkspaceFileUploader(agentId?: string) {
   const { data: workspacesData } = useWorkspaces();
@@ -48,41 +48,51 @@ export function useWorkspaceFileUploader(agentId?: string) {
 
 /**
  * The batch workspace-upload flow behind the drag-and-drop overlay and the
- * upload button: uploads with byte-weighted progress, then injects the
- * sandbox-visible paths into the composer text.
+ * upload button: every dropped file becomes a composer attachment, with
+ * byte-weighted progress across the batch.
+ *
+ * The files go through `composerRuntime.addAttachment`, which is the composer's
+ * own attachment adapter — the same one the "+" button uses. That adapter
+ * uploads the file and keeps the announced path to itself until the message is
+ * sent, so the user sees a chip they can remove and the agent still receives
+ * the absolute path in the request text.
+ *
+ * Uploading here instead, and writing the notice into the composer with
+ * `setText`, is what put "Uploaded workspace file: - /uploads/…" in front of
+ * the user as editable prose: the announcement is for the agent, the chip is
+ * for the human, and one gesture must not produce a different result from the
+ * other.
  */
 export function useWorkspaceUpload(agentId?: string) {
   const [uploadProgress, setUploadProgress] = useState<WorkspaceUploadProgress | null>(null);
   const composerRuntime = useComposerRuntime();
-  const { uploadFile, workspace: selectedWorkspace } = useWorkspaceFileUploader(agentId);
+  const { workspace: selectedWorkspace } = useWorkspaceFileUploader(agentId);
 
   const uploadFiles = async (files: FileList | File[] | null) => {
     const fileArray = files ? Array.from(files) : [];
     if (!selectedWorkspace || fileArray.length === 0) return;
 
-    const uploadedPaths: string[] = [];
     let progress = startWorkspaceUploadProgress(fileArray);
     setUploadProgress(progress);
 
-    // Empty once the application's upload route answers: the paths it returns
-    // are already absolute, so there is no root left to prepend.
-    let noticeRoot = '';
-
     try {
       for (const [index, file] of fileArray.entries()) {
-        const uploaded = await uploadFile(file);
-        uploadedPaths.push(uploaded.path);
-        noticeRoot = uploaded.noticeRoot;
+        try {
+          // Resolves once the adapter has uploaded the file and settled its
+          // chip; rejects when the upload was refused, and the chip is left
+          // incomplete so the message cannot go out naming a missing path.
+          await composerRuntime.addAttachment(file);
+        } catch (error) {
+          // The same reporting the "+" button uses, so a refused drop reads
+          // identically however the file was offered.
+          reportAttachmentFailure(file, error);
+          return;
+        }
         progress = completeWorkspaceUploadFile(progress, file, fileArray[index + 1]?.name ?? null);
         setUploadProgress(progress);
       }
 
-      const currentText = (composerRuntime.getState() as { text?: string }).text ?? '';
-      const notice = buildWorkspaceUploadNotice(uploadedPaths, noticeRoot);
-      composerRuntime.setText([currentText.trim(), notice].filter(Boolean).join('\n\n'));
-      toast.success(`Uploaded ${uploadedPaths.length} workspace file${uploadedPaths.length === 1 ? '' : 's'}`);
-    } catch (error) {
-      toast.error(`Failed to upload workspace file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.success(`Uploaded ${fileArray.length} workspace file${fileArray.length === 1 ? '' : 's'}`);
     } finally {
       setUploadProgress(null);
     }

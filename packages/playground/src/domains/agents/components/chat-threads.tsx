@@ -1,7 +1,7 @@
 import type { StorageThreadType } from '@mastra/core/memory';
 import { AlertDialog, Button, ContextMenu, DropdownMenu, Icon, Input, Skeleton } from '@mastra/playground-ui';
 import { Ellipsis, Pencil, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ThreadList,
   ThreadListEmpty,
@@ -180,9 +180,16 @@ interface DeleteThreadDialogProps {
   onDelete: () => void;
 }
 const DeleteThreadDialog = ({ open, onOpenChange, onDelete }: DeleteThreadDialogProps) => {
+  // Confirming is the whole reason the dialog opened, so Enter must confirm it.
+  // Base UI otherwise moves initial focus to the first tabbable child, which is
+  // Cancel (it comes first in the footer's DOM order, and has to, because the
+  // footer reverses on small screens) — so Enter dismissed the dialog and the
+  // chat stayed. Escape still cancels, which is where the safety lives.
+  const deleteRef = useRef<HTMLButtonElement>(null);
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialog.Content>
+      <AlertDialog.Content initialFocus={deleteRef}>
         <AlertDialog.Header>
           <AlertDialog.Title>Are you absolutely sure?</AlertDialog.Title>
           <AlertDialog.Description>
@@ -191,7 +198,9 @@ const DeleteThreadDialog = ({ open, onOpenChange, onDelete }: DeleteThreadDialog
         </AlertDialog.Header>
         <AlertDialog.Footer>
           <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-          <AlertDialog.Action onClick={onDelete}>Delete</AlertDialog.Action>
+          <AlertDialog.Action ref={deleteRef} onClick={onDelete}>
+            Delete
+          </AlertDialog.Action>
         </AlertDialog.Footer>
       </AlertDialog.Content>
     </AlertDialog>

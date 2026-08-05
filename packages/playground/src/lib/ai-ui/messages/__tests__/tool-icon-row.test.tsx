@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { groupPartsIntoRuns } from '../part-runs';
 import type { RunPartLike } from '../tool-icon-row';
 import { ToolIconRowView } from '../tool-icon-row';
 
@@ -153,5 +154,84 @@ describe('ToolIconRowView', () => {
 
     expect(screen.queryByTestId('part-run-icon-0')).toBeNull();
     expect(screen.getByTestId('part-run-icon-1')).toBeDefined();
+  });
+
+  it('lets the icons flow and wrap like letters rather than scrolling sideways', () => {
+    const p: RunPartLike[] = Array.from({ length: 12 }, (_, i) => ({
+      type: 'tool-call',
+      toolName: `tool_${i}`,
+      args: {},
+      result: { ok: true },
+    }));
+    renderRow({ parts: p });
+
+    // Wrapping is wanted: the same icons redistribute across more or fewer
+    // lines as the pane resizes. What must not happen is a sideways scroller.
+    const strip = icon(0).parentElement!;
+    expect(strip.className).toContain('flex-wrap');
+    expect(strip.className).not.toContain('overflow-x-auto');
+  });
+});
+
+/**
+ * The staircase the product owner reported: "2, then 4, then 4, then 4, then 1
+ * icon". Grouping is what decides how many row containers a message gets, so
+ * this drives the real grouping function and renders a row per group exactly
+ * as `MessagePrimitive.Unstable_PartsGrouped` does.
+ */
+describe('a turn of consecutive tool and reasoning parts', () => {
+  const renderGroups = (parts: RunPartLike[]) =>
+    render(
+      <>
+        {groupPartsIntoRuns(parts).map((group, g) =>
+          group.groupKey === undefined ? (
+            <div key={g} data-testid="ungrouped-part" />
+          ) : (
+            <ToolIconRowView key={g} parts={group.indices.map(i => parts[i]!)} isStreamingTail={false}>
+              {group.indices.map(i => (
+                <div key={i}>panel-{i}</div>
+              ))}
+            </ToolIconRowView>
+          ),
+        )}
+      </>,
+    );
+
+  it('renders as ONE flow container, not a clump per burst', () => {
+    // Shaped the way streaming delivers a sandbox command: the tool call, then
+    // the data parts it emits while running — none of which render anything.
+    const parts: RunPartLike[] = [
+      { type: 'tool-call', toolName: 'execute_command', args: { command: 'ls' }, result: { ok: true } },
+      { type: 'data', name: 'sandbox-stdout' } as RunPartLike,
+      { type: 'data', name: 'sandbox-stdout' } as RunPartLike,
+      { type: 'data', name: 'sandbox-exit' } as RunPartLike,
+      { type: 'reasoning', text: 'now read it' },
+      { type: 'tool-call', toolName: 'read_file', args: { path: '/a' }, result: { ok: true } },
+      { type: 'data', name: 'sandbox-stdout' } as RunPartLike,
+      { type: 'tool-call', toolName: 'edit_file', args: { path: '/a' }, result: { ok: true } },
+    ];
+
+    renderGroups(parts);
+
+    expect(screen.getAllByTestId('part-run')).toHaveLength(1);
+    // Four visible parts; the invisible data parts contribute no icons but do
+    // not end the sequence either.
+    expect(screen.getAllByTestId(/part-run-icon-/)).toHaveLength(4);
+  });
+
+  it('starts a second flow container only where real assistant text intervenes', () => {
+    const parts: RunPartLike[] = [
+      { type: 'tool-call', toolName: 'a', args: {}, result: { ok: true } },
+      { type: 'data', name: 'sandbox-stdout' } as RunPartLike,
+      { type: 'tool-call', toolName: 'b', args: {}, result: { ok: true } },
+      { type: 'text', text: 'Here is what I found.' },
+      { type: 'tool-call', toolName: 'c', args: {}, result: { ok: true } },
+      { type: 'reasoning', text: 'wrapping up' },
+    ];
+
+    renderGroups(parts);
+
+    expect(screen.getAllByTestId('part-run')).toHaveLength(2);
+    expect(screen.getAllByTestId('ungrouped-part')).toHaveLength(1);
   });
 });

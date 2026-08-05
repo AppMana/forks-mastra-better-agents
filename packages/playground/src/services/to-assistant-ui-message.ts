@@ -117,6 +117,23 @@ const getToolArgs = (toolInvocation: MastraToolInvocationPart['toolInvocation'])
 };
 
 /**
+ * The raw JSON buffer the React accumulator fills from `tool-call-delta`
+ * fragments, present only while the model is still writing the arguments.
+ *
+ * Until the last fragment lands the buffer is not parseable, so the accumulator
+ * keeps `args` at `{}`. Forwarding that `{}` is what made a long argument (a
+ * heredoc, a script) render as an empty object for as long as it took to
+ * stream. Forward the buffer instead and let assistant-ui partial-parse it —
+ * but only if `args` is left out entirely, because `fromThreadMessageLike`
+ * takes any truthy `args` (and `{}` is truthy) as authoritative.
+ */
+const getStreamingArgsText = (part: MastraToolInvocationPart): string | undefined => {
+  if (part.toolInvocation.state !== 'partial-call') return undefined;
+  const { argsText } = part as MastraToolInvocationPart & { argsText?: unknown };
+  return typeof argsText === 'string' ? argsText : undefined;
+};
+
+/**
  * Render-time reconstruction for persisted network routing decisions.
  *
  * Network runs persist their routing decision as a plain assistant text part
@@ -259,6 +276,18 @@ const toNetworkToolCallContent = (message: MastraDBMessage, decision: NetworkRou
 
 const toToolCallContent = (message: MastraDBMessage, part: MastraToolInvocationPart): ContentPart => {
   const { toolInvocation } = part;
+
+  const streamingArgsText = getStreamingArgsText(part);
+  if (streamingArgsText !== undefined) {
+    return {
+      type: 'tool-call' as const,
+      toolCallId: toolInvocation.toolCallId,
+      toolName: toolInvocation.toolName,
+      argsText: streamingArgsText,
+      metadata: getPartMetadata(message, part),
+    };
+  }
+
   const args = getToolArgs(toolInvocation) as ReadonlyJSONObject;
   const baseToolCall: ContentPart = {
     type: 'tool-call' as const,
@@ -415,6 +444,15 @@ const toStatus = (message: MastraDBMessage): MessageStatus | undefined => {
     part => (part.type === 'text' || part.type === 'reasoning') && 'state' in part && part.state === 'streaming',
   );
   if (hasStreamingText) return { type: 'running' };
+
+  // A tool call whose arguments are still arriving is the model mid-sentence,
+  // even when no text part is streaming. Reporting `complete` here told every
+  // consumer the call was settled — including renderers that act on arguments
+  // (skill activation) which would then act on a truncated value.
+  const hasStreamingToolInput = message.content.parts.some(
+    part => part.type === 'tool-invocation' && part.toolInvocation.state === 'partial-call',
+  );
+  if (hasStreamingToolInput) return { type: 'running' };
 
   const hasApprovalTool = message.content.parts.some(
     part => part.type === 'tool-invocation' && part.toolInvocation.state === 'approval-requested',
