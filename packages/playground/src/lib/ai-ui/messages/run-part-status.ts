@@ -18,6 +18,7 @@
  */
 
 import { isFileContentTool } from '../tools/badges/file-content';
+import { canonicalToolName, friendlyToolName } from '../tools/tool-names';
 import { WORKSPACE_TOOLS, WORKSPACE_TOOLS_PREFIX } from '@/domains/workspace/constants';
 
 /** The slice of an assistant message part this module and the icon row need. */
@@ -45,6 +46,10 @@ export const SANDBOX_TOOLS: readonly string[] = [
   WORKSPACE_TOOLS.SANDBOX.GET_PROCESS_OUTPUT,
   WORKSPACE_TOOLS.SANDBOX.KILL_PROCESS,
 ];
+
+/** Whether a streamed tool name is one of the three that need a sandbox pod. */
+export const isSandboxTool = (toolName: string | undefined): boolean =>
+  SANDBOX_TOOLS.includes(canonicalToolName(toolName));
 
 interface SandboxExit {
   exitCode?: number;
@@ -109,12 +114,12 @@ export function runPartSummary(part: RunPartLike): string | undefined {
   const toolName = part.toolName ?? '';
   const args = typeof part.args === 'object' && part.args !== null ? part.args : {};
 
-  if (SANDBOX_TOOLS.includes(toolName)) {
+  if (isSandboxTool(toolName)) {
     const command = args.command;
     return typeof command === 'string' ? truncate(command) : undefined;
   }
 
-  if (isFileContentTool(toolName) || toolName === WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES) {
+  if (isFileContentTool(toolName) || canonicalToolName(toolName) === WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES) {
     const path = args.path ?? args.file_path;
     return typeof path === 'string' ? truncate(path) : undefined;
   }
@@ -138,7 +143,7 @@ function activeToolPart(parts: readonly RunPartLike[]): RunPartLike | undefined 
  */
 export function isWaitingOnSandbox(parts: readonly RunPartLike[]): boolean {
   const part = activeToolPart(parts);
-  return Boolean(part && SANDBOX_TOOLS.includes(part.toolName ?? ''));
+  return Boolean(part && isSandboxTool(part.toolName));
 }
 
 /** The slice of the sandbox startup status this line needs. */
@@ -169,15 +174,12 @@ export function activeToolLabel(parts: readonly RunPartLike[], sandbox?: Sandbox
   const part = activeToolPart(parts);
   if (!part) return null;
 
-  if (sandbox && !sandbox.ready && SANDBOX_TOOLS.includes(part.toolName ?? '')) {
+  if (sandbox && !sandbox.ready && isSandboxTool(part.toolName)) {
     return sandbox.step >= 0 ? `${sandbox.message} step ${sandbox.step} of ${sandbox.totalSteps}` : sandbox.message;
   }
 
   const summary = runPartSummary(part);
-  const verb =
-    part.toolName === WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND
-      ? 'Executing a command…'
-      : `Running ${shortToolName(part.toolName)}…`;
+  const verb = `${friendlyToolName(part.toolName)}…`;
 
   return summary ? `${verb} ${summary}` : verb;
 }

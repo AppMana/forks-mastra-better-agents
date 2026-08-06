@@ -115,13 +115,13 @@ describe('ToolIconRowView', () => {
     expect([0, 1, 2].map(isHidden)).toEqual([true, true, true]);
   });
 
-  it('labels each icon with the tool and a short summary', () => {
+  it('labels each icon with a friendly title and a short summary', () => {
     renderRow();
 
-    expect(icon(0).getAttribute('aria-label')).toContain('read_file');
+    expect(icon(0).getAttribute('aria-label')).toContain('Reading a file');
     expect(icon(0).getAttribute('aria-label')).toContain('/src/a.ts');
     expect(icon(1).getAttribute('aria-label')).toContain('Reasoning');
-    expect(icon(2).getAttribute('aria-label')).toContain('execute_command');
+    expect(icon(2).getAttribute('aria-label')).toContain('Running a command');
     expect(icon(2).getAttribute('aria-label')).toContain('ls -la');
   });
 

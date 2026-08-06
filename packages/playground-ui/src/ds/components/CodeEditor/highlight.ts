@@ -26,6 +26,10 @@ const langAliases: Record<string, string> = {
   bash: 'bash',
   shell: 'bash',
   zsh: 'bash',
+  py: 'python',
+  python: 'python',
+  yml: 'yaml',
+  yaml: 'yaml',
 };
 
 let highlighterPromise: Promise<HighlighterCore> | null = null;
@@ -48,6 +52,8 @@ function getHighlighter(): Promise<HighlighterCore> {
           import('shiki/langs/json.mjs'),
           import('shiki/langs/bash.mjs'),
           import('shiki/langs/markdown.mjs'),
+          import('shiki/langs/python.mjs'),
+          import('shiki/langs/yaml.mjs'),
         ],
         engine: createJavaScriptRegexEngine(),
       });

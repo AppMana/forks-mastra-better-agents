@@ -6,8 +6,9 @@ import { Children, useEffect, useState } from 'react';
 
 import { getCodeModeCall } from '../tools/badges/code-mode-badge';
 import { isFileContentTool } from '../tools/badges/file-content';
+import { canonicalToolName, friendlyToolName } from '../tools/tool-names';
 import { isHiddenRunPart } from './part-runs';
-import { SANDBOX_TOOLS, runPartStatus, runPartSummary, shortToolName } from './run-part-status';
+import { isSandboxTool, runPartStatus, runPartSummary } from './run-part-status';
 import type { RunPartLike, RunPartStatus } from './run-part-status';
 import { WORKSPACE_TOOLS } from '@/domains/workspace/constants';
 
@@ -47,11 +48,12 @@ function runPartIcon(part: RunPartLike): ReactNode {
   const toolName = part.toolName ?? '';
   if (toolName.startsWith('agent-')) return <AgentIcon className="text-accent1" />;
   if (toolName.startsWith('workflow-')) return <WorkflowIcon className="text-accent3" />;
-  if (toolName === WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES) return <FolderTree />;
-  if (toolName === WORKSPACE_TOOLS.FILESYSTEM.READ_FILE) return <FileDown />;
-  if (toolName === WORKSPACE_TOOLS.FILESYSTEM.EDIT_FILE) return <FilePen />;
+  const canonical = canonicalToolName(toolName);
+  if (canonical === WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES) return <FolderTree />;
+  if (canonical === WORKSPACE_TOOLS.FILESYSTEM.READ_FILE) return <FileDown />;
+  if (canonical === WORKSPACE_TOOLS.FILESYSTEM.EDIT_FILE) return <FilePen />;
   if (isFileContentTool(toolName)) return <FileText />;
-  if (SANDBOX_TOOLS.includes(toolName)) return <TerminalSquare className="text-accent6" />;
+  if (isSandboxTool(toolName)) return <TerminalSquare className="text-accent6" />;
   if (part.args !== undefined && getCodeModeCall(part.args, part.result)) {
     return <ToolCoinIcon className="text-accent6" />;
   }
@@ -60,7 +62,7 @@ function runPartIcon(part: RunPartLike): ReactNode {
 
 /** Tooltip text: the tool (or "Reasoning") plus a short summary when there is one. */
 function runPartLabel(part: RunPartLike): string {
-  const name = part.type === 'reasoning' ? 'Reasoning' : shortToolName(part.toolName);
+  const name = part.type === 'reasoning' ? 'Reasoning' : friendlyToolName(part.toolName);
   const summary = runPartSummary(part);
   return summary ? `${name} · ${summary}` : name;
 }

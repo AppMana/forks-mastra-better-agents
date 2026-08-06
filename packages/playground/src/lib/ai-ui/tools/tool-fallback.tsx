@@ -12,6 +12,7 @@ import { ObservationMarkerBadge } from './badges/observation-marker-badge';
 import { SandboxExecutionBadge } from './badges/sandbox-execution-badge';
 import { ToolBadge } from './badges/tool-badge';
 import { useWorkflowStream, WorkflowBadge } from './badges/workflow-badge';
+import { canonicalToolName } from './tool-names';
 import { useActivatedSkills } from '@/domains/agents/context/activated-skills-context';
 import {
   isBrowserTool,
@@ -207,7 +208,8 @@ const ToolFallbackInner = ({ toolName, result, args, argsText, metadata, toolCal
   }
 
   // Use custom tree UI for list_files tool
-  const isListFiles = toolName === WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES;
+  const canonicalName = canonicalToolName(toolName);
+  const isListFiles = canonicalName === WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES;
 
   if (isListFiles) {
     return (
@@ -243,9 +245,9 @@ const ToolFallbackInner = ({ toolName, result, args, argsText, metadata, toolCal
 
   // Use custom terminal UI for sandbox execution tools
   const isSandboxExecution =
-    toolName === WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND ||
-    toolName === WORKSPACE_TOOLS.SANDBOX.GET_PROCESS_OUTPUT ||
-    toolName === WORKSPACE_TOOLS.SANDBOX.KILL_PROCESS;
+    canonicalName === WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND ||
+    canonicalName === WORKSPACE_TOOLS.SANDBOX.GET_PROCESS_OUTPUT ||
+    canonicalName === WORKSPACE_TOOLS.SANDBOX.KILL_PROCESS;
 
   if (isSandboxExecution) {
     return (

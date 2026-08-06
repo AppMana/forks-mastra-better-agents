@@ -1,5 +1,6 @@
 import { ToolsIcon } from '@mastra/playground-ui';
 import { isArgsTextIncomplete } from '../streaming-args';
+import { friendlyToolName } from '../tool-names';
 import { ToolResultView } from '../tool-result-view';
 import { BackgroundTaskMetadataDialogTrigger } from './background-task-metadata-dialog';
 import { BadgeWrapper } from './badge-wrapper';
@@ -77,7 +78,7 @@ export const ToolBadge = ({
     <BadgeWrapper
       data-testid="tool-badge"
       icon={<ToolsIcon className="text-accent6" />}
-      title={toolName}
+      title={friendlyToolName(toolName)}
       extraInfo={
         metadata?.mode === 'network' ? (
           <NetworkChoiceMetadataDialogTrigger

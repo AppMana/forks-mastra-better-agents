@@ -4,6 +4,7 @@ import { CheckIcon, ChevronUpIcon, CopyIcon, TerminalSquare } from 'lucide-react
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCopyToClipboard } from '../../hooks/use-copy-to-clipboard';
 import { isArgsTextIncomplete } from '../streaming-args';
+import { canonicalToolName, friendlyToolName } from '../tool-names';
 import type { ToolApprovalButtonsProps } from './tool-approval-buttons';
 import { ToolApprovalButtons } from './tool-approval-buttons';
 import { WORKSPACE_TOOLS } from '@/domains/workspace/constants';
@@ -140,14 +141,15 @@ export const SandboxExecutionBadge = ({
   );
 
   // Parse args to get command info
+  const canonicalName = canonicalToolName(toolName);
   let commandDisplay = '';
   try {
     const parsedArgs = typeof args === 'object' ? args : JSON.parse(args);
-    if (toolName === WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND) {
+    if (canonicalName === WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND) {
       commandDisplay = parsedArgs.command || '';
     } else if (
-      toolName === WORKSPACE_TOOLS.SANDBOX.GET_PROCESS_OUTPUT ||
-      toolName === WORKSPACE_TOOLS.SANDBOX.KILL_PROCESS
+      canonicalName === WORKSPACE_TOOLS.SANDBOX.GET_PROCESS_OUTPUT ||
+      canonicalName === WORKSPACE_TOOLS.SANDBOX.KILL_PROCESS
     ) {
       // Prefer the original command from streaming data, fall back to PID
       const cmd = commandChunk?.data?.command as string | undefined;
@@ -221,14 +223,7 @@ export const SandboxExecutionBadge = ({
       ? commandDisplay
       : resultText;
 
-  const displayName =
-    toolName === WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND
-      ? 'Execute Command'
-      : toolName === WORKSPACE_TOOLS.SANDBOX.GET_PROCESS_OUTPUT
-        ? 'Get Process Output'
-        : toolName === WORKSPACE_TOOLS.SANDBOX.KILL_PROCESS
-          ? 'Kill Process'
-          : toolName;
+  const displayName = friendlyToolName(toolName);
 
   // Get start time from first streaming chunk for live timer
   const firstChunkTime = sandboxChunks[0]?.data?.timestamp as number | undefined;

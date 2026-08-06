@@ -346,7 +346,7 @@ describe('RunProgressIndicator while the sandbox starts', () => {
 
     render(<RunProgressIndicator />);
 
-    await waitFor(() => expect(statusLine()).toBe('Running write_file… /workspace/analyze.py'));
+    await waitFor(() => expect(statusLine()).toBe('Writing a file… /workspace/analyze.py'));
     expect(sandboxPolls, 'a WebDAV tool must not even ask about the sandbox').toBe(0);
   });
 });

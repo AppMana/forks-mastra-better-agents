@@ -157,10 +157,10 @@ describe('activeToolLabel', () => {
       },
     ];
 
-    expect(activeToolLabel(parts)).toBe('Executing a command… uv pip install pandas openpyxl 2>&1 | tail -5');
+    expect(activeToolLabel(parts)).toBe('Running a command… uv pip install pandas openpyxl 2>&1 | tail -5');
   });
 
-  it('names other tools by tool and target', () => {
+  it('names other tools by what they are doing and to what', () => {
     const parts: RunPartLike[] = [
       {
         type: 'tool-call',
@@ -170,7 +170,7 @@ describe('activeToolLabel', () => {
       },
     ];
 
-    expect(activeToolLabel(parts)).toBe('Running read_file… /uploads/a.csv');
+    expect(activeToolLabel(parts)).toBe('Reading a file… /uploads/a.csv');
   });
 
   it('is null when every call has settled', () => {
@@ -181,7 +181,7 @@ describe('activeToolLabel', () => {
 /**
  * A cold sandbox is 16 to 17 seconds from pod creation to Ready plus a
  * dependency install, and sandboxes are per conversation, so nearly every
- * document chat pays it. During that window "Executing a command…" names
+ * document chat pays it. During that window "Running a command…" names
  * something that has not started.
  *
  * The danger is the opposite mistake. Only `execute_command`,
@@ -216,15 +216,15 @@ describe('activeToolLabel while a sandbox is starting', () => {
   });
 
   it('names the command again once the sandbox is ready', () => {
-    expect(activeToolLabel(executing, ready)).toBe('Executing a command… uv pip install pandas');
+    expect(activeToolLabel(executing, ready)).toBe('Running a command… uv pip install pandas');
   });
 
   it('never blames the sandbox for a tool that does not use one', () => {
-    expect(activeToolLabel(writing, starting)).toBe('Running write_file… /workspace/analyze.py');
+    expect(activeToolLabel(writing, starting)).toBe('Writing a file… /workspace/analyze.py');
   });
 
   it('falls back to the tool when no sandbox status is available', () => {
-    expect(activeToolLabel(executing, null)).toBe('Executing a command… uv pip install pandas');
+    expect(activeToolLabel(executing, null)).toBe('Running a command… uv pip install pandas');
   });
 });
 
