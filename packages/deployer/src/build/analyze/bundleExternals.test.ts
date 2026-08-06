@@ -326,7 +326,9 @@ export { default } from 'full-lib';`,
     expect(result.fileNameToDependencyMap.get(compiledDepCachePath)).toBe('@workspace/internal-lib');
     expect(result.optimizedDependencyEntries.get('@workspace/internal-lib')).toEqual({
       name: compiledDepCachePath,
-      virtual: "export { internalUtil, default } from '@workspace/internal-lib';",
+      // Dev bundles without treeshaking, and the analysed graph is narrower than the graph that
+      // consumes these files, so the named list is dropped in favour of a complete re-export.
+      virtual: "export * from '@workspace/internal-lib';\nexport { default } from '@workspace/internal-lib';",
     });
   });
 

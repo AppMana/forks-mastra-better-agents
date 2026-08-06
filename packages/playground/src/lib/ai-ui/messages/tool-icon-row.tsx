@@ -7,7 +7,9 @@ import { Children, useEffect, useState } from 'react';
 import { getCodeModeCall } from '../tools/badges/code-mode-badge';
 import { isFileContentTool } from '../tools/badges/file-content';
 import { isHiddenRunPart } from './part-runs';
-import { WORKSPACE_TOOLS, WORKSPACE_TOOLS_PREFIX } from '@/domains/workspace/constants';
+import { SANDBOX_TOOLS, runPartStatus, runPartSummary, shortToolName } from './run-part-status';
+import type { RunPartLike, RunPartStatus } from './run-part-status';
+import { WORKSPACE_TOOLS } from '@/domains/workspace/constants';
 
 /**
  * Compact icon row for a run of tool calls and reasoning parts.
@@ -27,29 +29,16 @@ import { WORKSPACE_TOOLS, WORKSPACE_TOOLS_PREFIX } from '@/domains/workspace/con
  * collapsed.
  */
 
-/** The slice of an assistant message part the icon row needs. */
-export interface RunPartLike {
-  type: string;
-  toolName?: string;
-  args?: Record<string, unknown> | string;
-  result?: unknown;
-  isError?: boolean;
-  text?: string;
-}
+export type { RunPartLike } from './run-part-status';
 
-type RunPartIndicator = 'running' | 'succeeded' | 'failed';
-
-const INDICATOR_CLASS: Record<RunPartIndicator, string> = {
+const INDICATOR_CLASS: Record<RunPartStatus, string> = {
   running: 'bg-amber-400 animate-pulse',
+  // Called, no answer yet, and nothing streaming to watch it finish. Grey says
+  // exactly that; red would claim a failure nobody reported.
+  pending: 'bg-neutral4',
   succeeded: 'bg-green-500',
   failed: 'bg-red-500',
 };
-
-const SANDBOX_TOOLS: readonly string[] = [
-  WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND,
-  WORKSPACE_TOOLS.SANDBOX.GET_PROCESS_OUTPUT,
-  WORKSPACE_TOOLS.SANDBOX.KILL_PROCESS,
-];
 
 /** Reuses the icon each badge renders: same glyph collapsed as expanded. */
 function runPartIcon(part: RunPartLike): ReactNode {
@@ -69,60 +58,29 @@ function runPartIcon(part: RunPartLike): ReactNode {
   return <ToolsIcon className="text-accent6" />;
 }
 
-const truncate = (value: string, max = 80): string => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
-
-function runPartSummary(part: RunPartLike): string | undefined {
-  if (part.type === 'reasoning') {
-    const firstLine = part.text?.trim().split('\n')[0];
-    return firstLine ? truncate(firstLine) : undefined;
-  }
-
-  const toolName = part.toolName ?? '';
-  const args = typeof part.args === 'object' && part.args !== null ? part.args : {};
-
-  if (SANDBOX_TOOLS.includes(toolName)) {
-    const command = args.command;
-    return typeof command === 'string' ? truncate(command) : undefined;
-  }
-  if (isFileContentTool(toolName) || toolName === WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES) {
-    const path = args.path ?? args.file_path;
-    return typeof path === 'string' ? truncate(path) : undefined;
-  }
-  return undefined;
-}
-
 /** Tooltip text: the tool (or "Reasoning") plus a short summary when there is one. */
 function runPartLabel(part: RunPartLike): string {
-  const name =
-    part.type === 'reasoning'
-      ? 'Reasoning'
-      : (part.toolName ?? 'tool').replace(new RegExp(`^${WORKSPACE_TOOLS_PREFIX}_`), '');
+  const name = part.type === 'reasoning' ? 'Reasoning' : shortToolName(part.toolName);
   const summary = runPartSummary(part);
   return summary ? `${name} · ${summary}` : name;
-}
-
-function runPartIndicator(part: RunPartLike, index: number, parts: readonly RunPartLike[], isStreamingTail: boolean) {
-  if (part.type === 'tool-call') {
-    if (part.isError) return 'failed';
-    if (part.result !== undefined) return 'succeeded';
-    // No result: still executing while the run streams; if the run ended
-    // without one, the call never completed.
-    return isStreamingTail ? 'running' : 'failed';
-  }
-  // Reasoning has no result; it is live only as the streaming tail's last part.
-  return isStreamingTail && index === parts.length - 1 ? 'running' : 'succeeded';
 }
 
 export interface ToolIconRowViewProps {
   /** Parts of this run, aligned index-for-index with `children`. */
   parts: readonly RunPartLike[];
+  /**
+   * Every part of the message, for status evidence that can sit outside the
+   * run — a command's `data-sandbox-exit` record above all. Defaults to the
+   * run's own parts.
+   */
+  messageParts?: readonly RunPartLike[];
   /** True while the message is still streaming and this run is its tail. */
   isStreamingTail: boolean;
   /** The rendered part components (the existing badges), one per part. */
   children?: ReactNode;
 }
 
-export const ToolIconRowView = ({ parts, isStreamingTail, children }: ToolIconRowViewProps) => {
+export const ToolIconRowView = ({ parts, messageParts, isStreamingTail, children }: ToolIconRowViewProps) => {
   // `{ index: null }` means "user collapsed everything"; `null` means "no user
   // choice yet — follow the streaming default".
   const [choice, setChoice] = useState<{ index: number | null } | null>(null);
@@ -152,7 +110,7 @@ export const ToolIconRowView = ({ parts, isStreamingTail, children }: ToolIconRo
       <div className="flex flex-wrap items-center gap-1">
         {parts.map((part, index) => {
           if (isHiddenRunPart(part)) return null;
-          const indicator = runPartIndicator(part, index, parts, isStreamingTail);
+          const indicator = runPartStatus(part, messageParts ?? parts, isStreamingTail, index === parts.length - 1);
           return (
             <Button
               key={index}
@@ -212,7 +170,7 @@ const PartRunGroupImpl = ({ indices, children }: PropsWithChildren<{ indices: nu
   const isStreamingTail = isMessageActive && indices[indices.length - 1] === parts.length - 1;
 
   return (
-    <ToolIconRowView parts={runParts} isStreamingTail={isStreamingTail}>
+    <ToolIconRowView parts={runParts} messageParts={parts} isStreamingTail={isStreamingTail}>
       {children}
     </ToolIconRowView>
   );

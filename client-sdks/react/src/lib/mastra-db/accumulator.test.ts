@@ -523,6 +523,78 @@ describe('accumulateChunk - text streaming', () => {
     expect(kinds).toEqual(['text:ran the first command', 'tool-invocation', 'text:ran the second command']);
   });
 
+  it('interleaves reply text with reasoning in emission order when the text id is reused', () => {
+    // Regression: with interleaved thinking the provider alternates reasoning
+    // and reply text under ONE text id and does not close the text block
+    // between rounds. The second round's text-start looked like a duplicate
+    // (its part was still 'streaming'), and the delta that followed found that
+    // part by id even though a reasoning block had been appended after it, so
+    // the second reply merged into the first and rendered above the thinking
+    // it came from. Storage keeps the parts in emission order, which is why a
+    // reload put it right.
+    const chunks = [
+      startChunk(),
+      reasoningStartChunk(),
+      reasoningDeltaChunk('first, work out the plan'),
+      textStartChunk('txt-0'),
+      textDeltaChunk('txt-0', 'here is the plan'),
+      reasoningStartChunk(),
+      reasoningDeltaChunk('now check the plan'),
+      textStartChunk('txt-0'),
+      textDeltaChunk('txt-0', 'and here is the answer'),
+      textEndChunk('txt-0'),
+    ];
+
+    // What storage replays on reload: the parts in the order the stream emitted
+    // them. This is the whole invariant -- streamed order === reloaded order.
+    const reloadedShape = ['reasoning', 'text:here is the plan', 'reasoning', 'text:and here is the answer'];
+
+    const streamedShape = reduce(chunks)[0].content.parts.map(p =>
+      p.type === 'text' ? `text:${(p as MastraTextPart).text}` : p.type,
+    );
+
+    expect(streamedShape).toEqual(reloadedShape);
+  });
+
+  it('a delta whose text id was reused after a tool call opens a new part', () => {
+    // Same fault reached without a second text-start: the provider replies,
+    // calls a tool, then continues under the same text id. Reaching back into
+    // the pre-tool part by id put the answer above the tool call.
+    const chunks = [
+      startChunk(),
+      textStartChunk('txt-0'),
+      textDeltaChunk('txt-0', 'running it now'),
+      toolCallChunk('tc-1', 'execute_command', { command: 'echo BRAVO' }),
+      toolResultChunk('tc-1', 'BRAVO'),
+      textDeltaChunk('txt-0', 'it printed BRAVO'),
+      textEndChunk('txt-0'),
+    ];
+
+    const reloadedShape = ['text:running it now', 'tool-invocation', 'text:it printed BRAVO'];
+
+    const streamedShape = reduce(chunks)[0].content.parts.map(p =>
+      p.type === 'text' ? `text:${(p as MastraTextPart).text}` : p.type,
+    );
+
+    expect(streamedShape).toEqual(reloadedShape);
+  });
+
+  it('an observational memory data part does not split the reply text', () => {
+    // data-* parts are transcript-transparent: they carry no position in the
+    // reply, so a text delta that follows one continues the same text part.
+    const out = reduce([
+      startChunk(),
+      textStartChunk('txt-0'),
+      textDeltaChunk('txt-0', 'thinking out loud '),
+      dataPartChunk('om-status', { windows: {} }),
+      textDeltaChunk('txt-0', 'and finishing the thought'),
+    ]);
+
+    const textParts = out[0].content.parts.filter(p => p.type === 'text') as MastraTextPart[];
+    expect(textParts).toHaveLength(1);
+    expect(textParts[0].text).toBe('thinking out loud and finishing the thought');
+  });
+
   it('text-delta without prior assistant creates one', () => {
     const out = reduce([textDeltaChunk('t1', 'orphan')]);
     expect(out).toHaveLength(1);

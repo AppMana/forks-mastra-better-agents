@@ -138,11 +138,42 @@ describe('ToolIconRowView', () => {
     expect(icon(2).getAttribute('data-status')).toBe('running');
   });
 
-  it('marks a tool call that never produced a result as failed once the run ended', () => {
+  it('leaves a call with no result yet pending, never red, off the streaming tail', () => {
+    // A tool executes with the message reading as complete: no text part is
+    // streaming while a command runs, so the run is not the streaming tail.
+    // That is why every in-flight command showed a failure dot.
     const p: RunPartLike[] = [{ type: 'tool-call', toolName: 't1', args: {}, result: undefined }];
     renderRow({ parts: p, isStreamingTail: false });
 
+    expect(icon(0).getAttribute('data-status')).toBe('pending');
+  });
+
+  it('reads the sandbox exit record for command status, on a reloaded turn', () => {
+    // Persisted shape from thread 1a299b82-6043-48b9-a298-df2898185450: the
+    // failed commands carry a result string like any other, and the exit part
+    // is what says they failed.
+    const p: RunPartLike[] = [
+      {
+        type: 'tool-call',
+        toolCallId: 'c1',
+        toolName: 'mastra_workspace_execute_command',
+        args: { command: 'uv pip install pandas openpyxl' },
+        result: 'error: No virtual environment found\n\nExit code: 2',
+      },
+      { type: 'data', name: 'sandbox-exit', data: { exitCode: 2, success: false, toolCallId: 'c1' } } as RunPartLike,
+      {
+        type: 'tool-call',
+        toolCallId: 'c2',
+        toolName: 'mastra_workspace_execute_command',
+        args: { command: 'uv venv .venv' },
+        result: 'Installed 6 packages in 24.11s\n',
+      },
+      { type: 'data', name: 'sandbox-exit', data: { exitCode: 0, success: true, toolCallId: 'c2' } } as RunPartLike,
+    ];
+    renderRow({ parts: p, isStreamingTail: false });
+
     expect(icon(0).getAttribute('data-status')).toBe('failed');
+    expect(icon(2).getAttribute('data-status')).toBe('succeeded');
   });
 
   it('renders no icon for hidden parts like updateWorkingMemory', () => {

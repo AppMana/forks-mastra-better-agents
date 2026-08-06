@@ -66,6 +66,16 @@ export function createVirtualDependencies(
   const fileNameToDependencyMap = new Map<string, string>();
   const optimizedDependencyEntries = new Map<string, VirtualDependency>();
   const rootDir = workspaceRoot || projectRoot;
+  /**
+   * `isDev`/`externalsPreset` are exactly the modes where `buildExternalDependencies` runs with
+   * `treeshake: false`, so narrowing the re-export list to the bindings we saw during analysis
+   * saves nothing there. It only costs: the analysis walks the module graph of the user's entry,
+   * while the graph that consumes these files also contains the dev server template and everything
+   * it pulls in, so a binding that only the server half imports is absent from the list and the
+   * generated module is a strict subset of what its importers ask for. Re-export everything
+   * instead; `export *` does not carry `default`, so keep that one explicit.
+   */
+  const reexportEverything = isDev || externalsPreset;
 
   for (const [dep, { exports }] of depsToOptimize.entries()) {
     // Use __ as separator to avoid conflicts with hyphens in package names
@@ -73,16 +83,24 @@ export function createVirtualDependencies(
     const fileName = dep.replaceAll('/', '__');
     const virtualFile: string[] = [];
     const exportStringBuilder = [];
+    let hasStarExport = false;
 
     for (const local of exports) {
       if (local === '*') {
-        virtualFile.push(`export * from '${dep}';`);
+        if (!hasStarExport) {
+          virtualFile.push(`export * from '${dep}';`);
+          hasStarExport = true;
+        }
         continue;
       } else if (local === 'default') {
         exportStringBuilder.push('default');
-      } else {
+      } else if (!reexportEverything) {
         exportStringBuilder.push(local);
       }
+    }
+
+    if (reexportEverything && !hasStarExport) {
+      virtualFile.push(`export * from '${dep}';`);
     }
 
     const chunks = [];

@@ -74,4 +74,35 @@ describe('ToolResultView', () => {
 
     expect(screen.getByTestId('stream-tail-preview-empty').textContent).toBe('No output');
   });
+
+  // A value that is still being written arrives as many small re-renders, each
+  // with a slightly longer string. Treating every render as the end of the
+  // stream turns every fragment into its own line, so a script rendered one
+  // token per line — worse than the `{}` the streaming replaced.
+  it('does not break a still-growing value at every render', () => {
+    const script = [
+      '#!/usr/bin/env bash',
+      'set -euo pipefail',
+      "cat <<'PY' > /workspace/analyze.py",
+      'import pandas as pd',
+      'print(1)',
+      'PY',
+    ].join('\n');
+
+    const { rerender } = render(<ToolResultView value="" isStreaming data-testid="tool-args" />);
+
+    for (let end = 8; end <= script.length; end += 8) {
+      rerender(<ToolResultView value={script.slice(0, end)} isStreaming data-testid="tool-args" />);
+    }
+    rerender(<ToolResultView value={script} isStreaming data-testid="tool-args" />);
+
+    const rendered = [
+      ...screen.getAllByTestId('stream-tail-preview-line').map(node => node.textContent ?? ''),
+      ...screen.queryAllByTestId('stream-tail-preview-pending').map(node => node.textContent ?? ''),
+    ];
+
+    // Fragments concatenate with nothing between them, and the newlines the
+    // script really contains are the only breaks.
+    expect(rendered).toEqual(script.split('\n'));
+  });
 });

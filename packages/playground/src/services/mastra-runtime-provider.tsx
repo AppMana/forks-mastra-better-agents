@@ -23,6 +23,7 @@ import {
 } from './stream-error-message';
 import { toAssistantUIMessages } from './to-assistant-ui-message';
 import { ToolCallProvider } from './tool-call-provider';
+import { useThreadTitlePoll } from './use-thread-title-poll';
 import { useObservationalMemoryContext } from '@/domains/agents/context';
 import { useWorkingMemory } from '@/domains/agents/context/agent-working-memory-context';
 import { useMemoryConfig } from '@/domains/memory/hooks';
@@ -113,6 +114,10 @@ export function MastraRuntimeProvider({
   // state that survives those resets so the chat still surfaces the failure.
   const [streamErrors, setStreamErrors] = useState<MastraDBMessage[]>([]);
   const [pendingSignals, setPendingSignals] = useState<{ id: string; preview: string }[]>([]);
+  // Bumped when a turn has been submitted for this thread, whether it finished
+  // or the user interrupted it. Arms the watch for the title the agent
+  // generates in the background.
+  const [titleWatch, setTitleWatch] = useState(0);
   const [threadSignalsUnsupported, setThreadSignalsUnsupported] = useState(false);
   const threadSignalsUnsupportedRef = useRef(false);
   const threadSignalsEnabled =
@@ -131,9 +136,12 @@ export function MastraRuntimeProvider({
   useEffect(() => {
     setStreamErrors([]);
     setPendingSignals([]);
+    setTitleWatch(0);
     threadSignalsUnsupportedRef.current = false;
     setThreadSignalsUnsupported(false);
   }, [agentId, threadId]);
+
+  useThreadTitlePoll({ agentId, threadId, token: titleWatch, refreshThreadList });
 
   const chatRequestContext = useMemo(() => {
     if (!agentVersionId && !requestContext) return undefined;
@@ -323,6 +331,14 @@ export function MastraRuntimeProvider({
     // carry over errors from a previous failed run.
     setStreamErrors([]);
 
+    // Arm the title watch at SUBMIT, not at finish. The server names the
+    // conversation from the first message at request entry, so the title exists
+    // seconds into a turn that then spends minutes bringing up a sandbox and
+    // running commands — and may never finish at all if the backend dies.
+    // Waiting for the `finish` chunk to start looking is what left the sidebar
+    // showing the creation timestamp for the whole of that.
+    setTitleWatch(watch => watch + 1);
+
     const requestContextInstance = new RequestContext();
     Object.entries(requestContext ?? {}).forEach(([key, value]) => {
       requestContextInstance.set(key, value);
@@ -438,6 +454,10 @@ export function MastraRuntimeProvider({
                 }
 
                 await refreshThreadList?.();
+                // The agent fires title generation without awaiting it, so
+                // this refresh always runs before the title exists. Watch for
+                // it instead of leaving the sidebar a turn behind.
+                setTitleWatch(watch => watch + 1);
               }
 
               if (chunk.type === 'error') {
@@ -537,6 +557,9 @@ export function MastraRuntimeProvider({
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setPendingSignals([]);
+    // An interrupted chat is still the user's request and still deserves that
+    // name, so it watches through the same path a finished turn does.
+    setTitleWatch(watch => watch + 1);
     // Reset OM streaming state in case observation was in progress
     resetObservationalMemoryStreamState();
     cancelRun?.();

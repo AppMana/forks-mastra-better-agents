@@ -27,7 +27,6 @@ export const executeCommandInputSchema = z.object({
     }, z.number())
     .nullish()
     .describe('Maximum execution time in seconds. Example: 60 for 1 minute.'),
-  cwd: z.string().nullish().describe('Working directory for the command'),
   tail: z
     .number()
     .nullish()
@@ -109,7 +108,7 @@ async function cacheFullOutput(
 
 /** Shared execute function used by both foreground-only and background-capable tool variants. */
 async function executeCommand(input: Record<string, any>, context: any) {
-  let { command, cwd, tail } = input;
+  let { command, tail } = input;
   const timeout = input.timeout != null ? (input.timeout as number) * 1000 : undefined;
   const background = input.background as boolean | undefined;
   const { workspace, sandbox } = requireSandbox(context);
@@ -179,7 +178,7 @@ async function executeCommand(input: Record<string, any>, context: any) {
   const span = startWorkspaceSpan(context, workspace, {
     category: 'sandbox',
     operation: background ? 'spawnProcess' : 'executeCommand',
-    input: { command, cwd, timeout: input.timeout, background },
+    input: { command, timeout: input.timeout, background },
     attributes: { sandboxProvider: sandbox.provider },
   });
 
@@ -201,7 +200,6 @@ async function executeCommand(input: Record<string, any>, context: any) {
     // spawn() resolves before any data events fire (Node event loop guarantees this).
     let handle: Awaited<ReturnType<typeof sandbox.processes.spawn>>;
     handle = await sandbox.processes.spawn(command, {
-      cwd: cwd ?? undefined,
       timeout: timeout ?? undefined,
       abortSignal: bgAbortSignal,
       onStdout: bgConfig?.onStdout
@@ -246,7 +244,6 @@ async function executeCommand(input: Record<string, any>, context: any) {
   try {
     const result = await sandbox.executeCommand(command, [], {
       timeout: timeout ?? undefined,
-      cwd: cwd ?? undefined,
       abortSignal: context?.abortSignal, // foreground processes use agent's abort signal
       onStdout: async (data: string) => {
         stdout += data;
@@ -329,13 +326,13 @@ Examples:
   "npm install && npm run build"
   "ls -la src/"
   "cat config.json | jq '.database'"
-  "cd /app && python main.py"
+  "python main.py"
 
 Usage:
 - Commands run in a shell, so pipes, redirects, and chaining (&&, ||, ;) all work.
-- Always quote file paths that contain spaces (e.g., cd "/path/with spaces").
+- Always quote file paths that contain spaces.
 - Use the timeout parameter (in seconds) to limit execution time. Behavior when omitted depends on the sandbox provider.
-- Optionally use cwd to override the working directory. Commands run from the sandbox default if omitted.
+- Commands run in the sandbox's working directory. Do not change it; address anything outside it by absolute path.
 - Heredocs (\`python <<EOF ... EOF\`) and \`-c\` strings work fine, and are a good fit for a couple of lines. For anything longer, prefer writing the script to a file and running the file — e.g. write \`analyze.py\`, then run \`python analyze.py\`. A file is unaffected by shell quoting, is cheaper to emit once, and can be edited and re-run when it fails instead of being retyped in full.
 - Output that gets truncated is saved in full to a file under tool_outputs/ in the working directory; read or grep that file instead of re-running the command.`;
 

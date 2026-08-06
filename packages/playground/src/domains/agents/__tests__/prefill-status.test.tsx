@@ -3,7 +3,14 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PrefillIndicator, PrefillIndicatorView } from '../components/prefill-indicator';
+const auiMessages = vi.hoisted(() => ({ current: [] as unknown[] }));
+
+vi.mock('@assistant-ui/react', () => ({
+  useAuiState: (selector: (state: { thread: { messages: unknown[] } }) => unknown) =>
+    selector({ thread: { messages: auiMessages.current } }),
+}));
+
+import { PrefillIndicator, PrefillIndicatorView, RunProgressIndicator } from '../components/prefill-indicator';
 import {
   activePrefillSlot,
   advancePrefill,
@@ -14,6 +21,7 @@ import {
   prefillStatusUrl,
 } from '../prefill-status';
 import type { PrefillSlot } from '../prefill-status';
+import { sandboxStatusUrl } from '@/domains/workspace/sandbox-status';
 import { server } from '@/test/msw-server';
 
 afterEach(cleanup);
@@ -117,6 +125,27 @@ describe('advancePrefill', () => {
   });
 });
 
+describe('advancePrefill ticks', () => {
+  it('ticks once per poll where the token count actually moved', () => {
+    const first = advancePrefill([slot()], IDLE_PREFILL_TRACKER, 1000);
+    expect(first.progress.ticks).toBe(1);
+
+    const same = advancePrefill([slot()], first.tracker, 2000);
+    expect(same.progress.ticks).toBe(1);
+
+    const moved = advancePrefill([slot({ promptProcessed: 24536, contextUsed: 24536 })], same.tracker, 3000);
+    expect(moved.progress.ticks).toBe(2);
+  });
+
+  it('does not rewind the count when the slot goes quiet between steps', () => {
+    const first = advancePrefill([slot()], IDLE_PREFILL_TRACKER, 1000);
+    const quiet = advancePrefill([], first.tracker, 2000);
+
+    expect(quiet.progress.phase).toBe('queued');
+    expect(quiet.progress.ticks).toBe(first.progress.ticks);
+  });
+});
+
 describe('fetchPrefillSlots', () => {
   it('unwraps the slots array and swallows failures', async () => {
     const good = vi.fn(async () => ({ ok: true, json: async () => ({ slots: [slot()] }) }) as unknown as Response);
@@ -195,6 +224,57 @@ describe('PrefillIndicatorView', () => {
   });
 });
 
+describe('PrefillIndicatorView, while a tool runs', () => {
+  it('says what is being executed instead of waiting on the model', () => {
+    // The model is idle while a command runs, so no slot is busy and the poll
+    // reports "queued". The run is not waiting for the model at all.
+    render(<PrefillIndicatorView progress={progressOf([])} activity="Executing a command… uv pip install pandas" />);
+
+    expect(screen.getByText('Executing a command… uv pip install pandas')).toBeTruthy();
+    expect(screen.queryByText('Waiting for the model…')).toBeNull();
+    expect(screen.getByTestId('prefill-progress').getAttribute('data-phase')).toBe('executing');
+  });
+
+  it('stays one line: the activity replaces the label, it does not join it', () => {
+    const { container } = render(
+      <PrefillIndicatorView progress={progressOf([slot()])} activity="Executing a command… ls -la" />,
+    );
+
+    expect(container.querySelectorAll('[data-testid="prefill-status-line"]')).toHaveLength(1);
+    expect(container.innerHTML).not.toContain('Reading your prompt');
+  });
+});
+
+describe('the progress bar', () => {
+  const fill = () => screen.getByTestId('prefill-bar-fill');
+
+  it('advances as the token count advances, without inventing a percentage', () => {
+    const first = advancePrefill([slot()], IDLE_PREFILL_TRACKER, 1000);
+    const { rerender } = render(<PrefillIndicatorView progress={first.progress} />);
+    const startedAt = fill().style.left;
+
+    const moved = advancePrefill([slot({ promptProcessed: 40000, contextUsed: 40000 })], first.tracker, 2000);
+    rerender(<PrefillIndicatorView progress={moved.progress} />);
+
+    expect(fill().style.left).not.toBe(startedAt);
+    // Still indeterminate: the bar reports that progress happened, never how
+    // much of an unknown total is left.
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBeNull();
+  });
+
+  it('stands still when nothing moved, rather than animating regardless', () => {
+    const first = advancePrefill([slot()], IDLE_PREFILL_TRACKER, 1000);
+    const { rerender } = render(<PrefillIndicatorView progress={first.progress} />);
+    const startedAt = fill().style.left;
+
+    const same = advancePrefill([slot()], first.tracker, 2000);
+    rerender(<PrefillIndicatorView progress={same.progress} />);
+
+    expect(fill().style.left).toBe(startedAt);
+    expect(fill().className).not.toContain('animate-pulse');
+  });
+});
+
 describe('PrefillIndicator', () => {
   it('shows queued before the first poll answers, then the prefill counts', async () => {
     server.use(http.get(prefillStatusUrl(), () => HttpResponse.json({ slots: [slot()] })));
@@ -212,5 +292,61 @@ describe('PrefillIndicator', () => {
     render(<PrefillIndicator />);
     expect(await screen.findByText('Waiting for the model…')).toBeTruthy();
     expect(screen.getByTestId('prefill-progress').getAttribute('data-phase')).toBe('queued');
+  });
+});
+
+/**
+ * The run progress line while the sandbox is coming up.
+ *
+ * A cold sandbox is 16 to 17 seconds from pod creation to Ready plus a
+ * dependency install, and sandboxes are per conversation, so nearly every
+ * document chat pays it. The line has to say that, and it has to say it ONLY
+ * for the three tools that need a pod.
+ */
+describe('RunProgressIndicator while the sandbox starts', () => {
+  const startingStatus = {
+    phase: 'pulling-image',
+    message: 'Downloading the workspace image…',
+    step: 5,
+    totalSteps: 8,
+    ready: false,
+  };
+
+  const runningToolMessage = (toolName: string, args: Record<string, unknown>) => ({
+    role: 'assistant',
+    content: [{ type: 'tool-call', toolCallId: 'live', toolName, args }],
+  });
+
+  const statusLine = () => screen.getByTestId('prefill-status-line').textContent;
+
+  it('names the startup step while a command waits for the pod', async () => {
+    auiMessages.current = [
+      runningToolMessage('mastra_workspace_execute_command', { command: 'uv pip install pandas' }),
+    ];
+    server.use(
+      http.get(prefillStatusUrl(), () => HttpResponse.json({ slots: [] })),
+      http.get(sandboxStatusUrl(), () => HttpResponse.json({ status: startingStatus })),
+    );
+
+    render(<RunProgressIndicator />);
+
+    await waitFor(() => expect(statusLine()).toBe('Downloading the workspace image… step 5 of 8'));
+  });
+
+  it('never blames the sandbox for a write, which goes over WebDAV', async () => {
+    auiMessages.current = [runningToolMessage('mastra_workspace_write_file', { path: '/workspace/analyze.py' })];
+    let sandboxPolls = 0;
+    server.use(
+      http.get(prefillStatusUrl(), () => HttpResponse.json({ slots: [] })),
+      http.get(sandboxStatusUrl(), () => {
+        sandboxPolls += 1;
+        return HttpResponse.json({ status: startingStatus });
+      }),
+    );
+
+    render(<RunProgressIndicator />);
+
+    await waitFor(() => expect(statusLine()).toBe('Running write_file… /workspace/analyze.py'));
+    expect(sandboxPolls, 'a WebDAV tool must not even ask about the sandbox').toBe(0);
   });
 });

@@ -3,7 +3,7 @@ import type { MastraDBMessage } from '@mastra/core/agent/message-list';
 import { useChat } from '@mastra/react';
 import { act, render, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   cancelRun: vi.fn(),
@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   threadRuntimeState: undefined as any,
   sendMessage: vi.fn(),
   createMemoryThread: vi.fn(),
+  getThread: vi.fn(),
+  getMemoryThread: vi.fn(),
   markCycleIdActivated: vi.fn(),
   setStreamProgress: vi.fn(),
   chatState: {
@@ -71,6 +73,7 @@ vi.mock('@mastra/react', () => ({
   useMastraClient: vi.fn(() => ({
     options: {},
     createMemoryThread: mocks.createMemoryThread,
+    getMemoryThread: mocks.getMemoryThread,
   })),
 }));
 
@@ -131,6 +134,7 @@ vi.mock('../tool-call-provider', () => ({
 }));
 
 import { MastraRuntimeProvider } from '../mastra-runtime-provider';
+import { THREAD_TITLE_POLL_ATTEMPTS, THREAD_TITLE_POLL_INTERVAL_MS } from '../thread-title';
 
 describe('MastraRuntimeProvider', () => {
   beforeEach(() => {
@@ -142,6 +146,10 @@ describe('MastraRuntimeProvider', () => {
     mocks.chatState.isRunning = false;
     mocks.sendMessage.mockReset();
     mocks.createMemoryThread.mockReset();
+    mocks.getThread.mockReset();
+    mocks.getThread.mockResolvedValue({ id: 'thread-1', title: '' });
+    mocks.getMemoryThread.mockReset();
+    mocks.getMemoryThread.mockImplementation(() => ({ get: mocks.getThread }));
     mocks.markCycleIdActivated.mockReset();
     mocks.setStreamProgress.mockReset();
     delete (window as any).MASTRA_AGENT_SIGNALS;
@@ -255,6 +263,133 @@ describe('MastraRuntimeProvider', () => {
         },
       ],
       metadata: { status: 'error' },
+    });
+  });
+
+  describe('generated thread title', () => {
+    // The agent fires title generation without awaiting it, so refreshing the
+    // thread list on the `finish` chunk always runs before the title exists and
+    // the sidebar keeps the creation timestamp until some later turn.
+    const finishingSend = () =>
+      mocks.sendMessage.mockImplementation(async ({ onChunk }: { onChunk?: (chunk: unknown) => Promise<void> }) => {
+        await onChunk?.({ type: 'finish', runId: 'run-1', payload: { stepResult: { reason: 'stop' } } });
+      });
+
+    const renderProvider = (refreshThreadList: () => void) =>
+      render(
+        <MastraRuntimeProvider
+          agentId="agent-1"
+          threadId="thread-1"
+          initialMessages={[]}
+          modelVersion="v2"
+          refreshThreadList={refreshThreadList}
+        >
+          <div />
+        </MastraRuntimeProvider>,
+      );
+
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('refreshes the thread list once the generated title lands', async () => {
+      finishingSend();
+      mocks.getThread
+        .mockResolvedValueOnce({ id: 'thread-1', title: '' })
+        .mockResolvedValueOnce({ id: 'thread-1', title: 'New Thread 2026-08-04T20:06:56.000Z' })
+        .mockResolvedValue({ id: 'thread-1', title: 'Rename the deploy job' });
+
+      const refreshThreadList = vi.fn();
+      renderProvider(refreshThreadList);
+
+      await act(async () => {
+        await mocks.runtimeProps.onNew({ content: [{ type: 'text', text: 'rename the deploy job' }] });
+      });
+
+      const refreshesAtFinish = refreshThreadList.mock.calls.length;
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(THREAD_TITLE_POLL_INTERVAL_MS * 3);
+      });
+
+      expect(refreshThreadList.mock.calls.length).toBeGreaterThan(refreshesAtFinish);
+
+      // And it stops: the title is there, so nothing keeps polling.
+      const pollsWhenTitled = mocks.getThread.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(THREAD_TITLE_POLL_INTERVAL_MS * 5);
+      });
+      expect(mocks.getThread.mock.calls.length).toBe(pollsWhenTitled);
+    });
+
+    it('gives up on a thread that never gets a title', async () => {
+      finishingSend();
+      mocks.getThread.mockResolvedValue({ id: 'thread-1', title: '' });
+
+      renderProvider(vi.fn());
+
+      await act(async () => {
+        await mocks.runtimeProps.onNew({ content: [{ type: 'text', text: 'hello' }] });
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(THREAD_TITLE_POLL_INTERVAL_MS * (THREAD_TITLE_POLL_ATTEMPTS + 10));
+      });
+
+      expect(mocks.getThread.mock.calls.length).toBe(THREAD_TITLE_POLL_ATTEMPTS);
+    });
+
+    it('stops watching when the chat unmounts', async () => {
+      finishingSend();
+      mocks.getThread.mockResolvedValue({ id: 'thread-1', title: '' });
+
+      const { unmount } = renderProvider(vi.fn());
+
+      await act(async () => {
+        await mocks.runtimeProps.onNew({ content: [{ type: 'text', text: 'hello' }] });
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(THREAD_TITLE_POLL_INTERVAL_MS * 2);
+      });
+
+      unmount();
+      const pollsAtUnmount = mocks.getThread.mock.calls.length;
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(THREAD_TITLE_POLL_INTERVAL_MS * 5);
+      });
+
+      expect(mocks.getThread.mock.calls.length).toBe(pollsAtUnmount);
+    });
+
+    it('watches for the title after the user interrupts the run', async () => {
+      // A chat stopped mid-response is still the user's request and still
+      // deserves that name. Whatever the server ends up persisting has to
+      // surface through the same watch, not a second mechanism.
+      mocks.sendMessage.mockImplementation(() => new Promise(() => {}));
+      mocks.getThread.mockResolvedValue({ id: 'thread-1', title: '' });
+
+      renderProvider(vi.fn());
+
+      void mocks.runtimeProps.onNew({ content: [{ type: 'text', text: 'rename the deploy job' }] });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        await mocks.runtimeProps.onCancel();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(THREAD_TITLE_POLL_INTERVAL_MS * 2);
+      });
+
+      expect(mocks.getThread).toHaveBeenCalled();
     });
   });
 

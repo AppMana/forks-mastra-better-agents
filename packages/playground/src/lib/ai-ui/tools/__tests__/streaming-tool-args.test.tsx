@@ -238,8 +238,13 @@ describe('ToolBadge while arguments are still being written', () => {
     renderExpanded(renderedToolCallPart(streamingChunks(STREAMED_FRAGMENTS)));
 
     const argsBlock = within(screen.getByTestId('tool-args'));
-    const text = argsBlock
-      .getAllByTestId('stream-tail-preview-line')
+    // The buffer is still growing, so what is on screen is the unterminated
+    // trailing line, not a finished one. Ending it at every render is what put
+    // each fragment on its own line.
+    const text = [
+      ...argsBlock.queryAllByTestId('stream-tail-preview-line'),
+      ...argsBlock.queryAllByTestId('stream-tail-preview-pending'),
+    ]
       .map(node => node.textContent ?? '')
       .join('\n');
 
@@ -251,5 +256,6 @@ describe('ToolBadge while arguments are still being written', () => {
     renderExpanded(renderedToolCallPart(completedChunks()));
 
     expect(within(screen.getByTestId('tool-args')).queryAllByTestId('stream-tail-preview-line')).toHaveLength(0);
+    expect(within(screen.getByTestId('tool-args')).queryAllByTestId('stream-tail-preview-pending')).toHaveLength(0);
   });
 });

@@ -50,6 +50,15 @@ export interface PrefillProgress {
   percent: number | null;
   tokens: number;
   contextSize: number;
+  /**
+   * How many times the token count has been observed to move during this run.
+   *
+   * There is no denominator for tokens, so the bar cannot show a fraction of
+   * anything. What it can show honestly is that the run advanced: each tick is
+   * one poll in which the model's own counter went up, and the bar steps once
+   * per tick. Motion means progress happened; stillness means it did not.
+   */
+  ticks: number;
 }
 
 /** Progress between polls, so a stall can be told from slow progress. */
@@ -57,13 +66,14 @@ export interface PrefillTracker {
   taskId: number | null;
   tokens: number;
   changedAt: number;
+  ticks: number;
 }
 
 export const PREFILL_POLL_INTERVAL_MS = 1500;
 /** How long the counters may sit still before the run is called stalled. */
 export const PREFILL_STALL_AFTER_MS = 45_000;
 
-export const IDLE_PREFILL_TRACKER: PrefillTracker = { taskId: null, tokens: -1, changedAt: 0 };
+export const IDLE_PREFILL_TRACKER: PrefillTracker = { taskId: null, tokens: -1, changedAt: 0, ticks: 0 };
 
 const QUEUED_HINT = 'The request is waiting for the model server.';
 const PREFILL_HINT = 'The whole prompt is read before the first word appears. A large document can take minutes.';
@@ -118,8 +128,11 @@ export function advancePrefill(
   const slot = activePrefillSlot(slots);
 
   if (!slot) {
+    // A run between steps — the model idle while a tool works — is not a run
+    // that has made no progress. Keep the tick count so the bar holds its
+    // place instead of snapping back to the start.
     return {
-      tracker: IDLE_PREFILL_TRACKER,
+      tracker: { ...IDLE_PREFILL_TRACKER, ticks: tracker.ticks },
       progress: {
         phase: 'queued',
         label: 'Waiting for the model…',
@@ -127,13 +140,16 @@ export function advancePrefill(
         percent: null,
         tokens: 0,
         contextSize: 0,
+        ticks: tracker.ticks,
       },
     };
   }
 
   const tokens = prefillTokens(slot);
   const moved = tracker.taskId !== slot.taskId || tracker.tokens !== tokens;
-  const next: PrefillTracker = moved ? { taskId: slot.taskId, tokens, changedAt: now } : tracker;
+  const next: PrefillTracker = moved
+    ? { taskId: slot.taskId, tokens, changedAt: now, ticks: tracker.ticks + 1 }
+    : tracker;
 
   if (slot.decoding) {
     return {
@@ -145,6 +161,7 @@ export function advancePrefill(
         percent: null,
         tokens,
         contextSize: slot.contextSize,
+        ticks: next.ticks,
       },
     };
   }
@@ -161,6 +178,7 @@ export function advancePrefill(
       percent: null,
       tokens,
       contextSize: slot.contextSize,
+      ticks: next.ticks,
     },
   };
 }

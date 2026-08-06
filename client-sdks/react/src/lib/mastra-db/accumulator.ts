@@ -102,6 +102,34 @@ const partProviderMetadata = (part: MastraMessagePart): Record<string, unknown> 
   (part as { providerMetadata?: Record<string, unknown> }).providerMetadata;
 
 /**
+ * The index of the text part a text chunk still belongs to, or -1 when the
+ * chunk has to open a new one.
+ *
+ * Storage records parts in emission order, so a text part is only still open
+ * while nothing has taken its place in the transcript. Once a reasoning block,
+ * a tool call or a file lands, later text belongs AFTER it: reaching back by
+ * text id merged the reply into the earlier part and rendered it above the
+ * thinking or the tool call it came from, until a reload replaced the message
+ * with the stored one. Providers reuse the text id across rounds (llama.cpp
+ * emits `txt-0` every time), so the id alone cannot decide this.
+ *
+ * `data-*` parts carry no position in the transcript and leave the text part
+ * open, otherwise streamed observational memory status would chop the reply
+ * into fragments.
+ */
+const openTextPartIndex = (parts: MastraMessagePart[], textId?: string): number => {
+  for (let index = parts.length - 1; index >= 0; index--) {
+    const part = parts[index]!;
+    if (part.type.startsWith('data-')) continue;
+    if (part.type !== 'text' || partState(part) !== 'streaming') return -1;
+    const existingId = partTextId(part);
+    if (textId && existingId && existingId !== textId) return -1;
+    return index;
+  }
+  return -1;
+};
+
+/**
  * Set any streaming text/reasoning parts on the trailing assistant message to
  * `state: 'done'`. Mirrors the previous `finishStreamingAssistantMessage` from
  * the AI-SDK accumulator.
@@ -497,20 +525,17 @@ export const accumulateChunk = ({ chunk, conversation, metadata }: AccumulateChu
     case 'text-start': {
       const lastMessage = result[result.length - 1];
       const textId = chunk.payload.id || `text-${Date.now()}`;
-      // Only a still-streaming part with this id is a duplicate text-start.
-      // Providers are not required to make text ids unique across steps, and
+      // Only the still-open part with this id is a duplicate text-start.
+      // Providers are not required to make text ids unique across rounds, and
       // the OpenAI-compatible ones do not: llama.cpp emits `txt-0` for every
-      // step of a run. Matching on the id alone therefore swallowed the second
-      // step's text-start, and that step's deltas then found the *finished*
-      // first-step part by id and appended into it — putting the final reply
-      // above the tool calls that produced it, until a reload replaced the
-      // accumulated message with the correctly-parted one from storage.
+      // round. Matching on the id alone swallowed the next round's text-start,
+      // and that round's deltas then found the earlier part by id and appended
+      // into it, putting the reply above the reasoning or the tool calls it
+      // came from.
       if (
         chunk.payload.id &&
         lastMessage?.role === 'assistant' &&
-        lastMessage.content.parts.some(
-          part => part.type === 'text' && partTextId(part) === textId && partState(part) === 'streaming',
-        )
+        openTextPartIndex(lastMessage.content.parts, textId) !== -1
       ) {
         return result;
       }
@@ -584,13 +609,7 @@ export const accumulateChunk = ({ chunk, conversation, metadata }: AccumulateChu
 
       const parts = [...lastMessage.content.parts];
 
-      let textPartIndex = textId
-        ? parts.findLastIndex(part => part.type === 'text' && partTextId(part) === textId)
-        : -1;
-
-      if (textPartIndex === -1) {
-        textPartIndex = parts.findLastIndex(part => part.type === 'text' && partState(part) === 'streaming');
-      }
+      const textPartIndex = openTextPartIndex(parts, textId);
 
       if (textPartIndex === -1) {
         const newTextPart: MastraTextPart = {

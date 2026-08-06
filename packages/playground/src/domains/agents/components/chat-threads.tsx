@@ -11,6 +11,7 @@ import {
   ThreadListSeparator,
 } from '@/components/thread-list';
 import { useLinkComponent } from '@/lib/framework';
+import { isUntitledThreadName } from '@/services/thread-title';
 
 export interface ChatThreadsProps {
   threads: StorageThreadType[];
@@ -217,7 +218,7 @@ const RenameThreadDialog = ({ thread, onOpenChange, onRename }: RenameThreadDial
   const [title, setTitle] = useState('');
 
   useEffect(() => {
-    setTitle(thread ? (isDefaultThreadName(thread.title || '') ? '' : thread.title || '') : '');
+    setTitle(thread && !isUntitledThreadName(thread.title) ? thread.title! : '');
   }, [thread]);
 
   return (
@@ -264,13 +265,8 @@ const ChatThreadSkeleton = () => (
   </div>
 );
 
-function isDefaultThreadName(name: string): boolean {
-  const defaultPattern = /^New Thread \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
-  return defaultPattern.test(name);
-}
-
 function ThreadTitle({ title, id, createdAt }: { title?: string; id?: string; createdAt?: Date }) {
-  if (!title || isDefaultThreadName(title)) {
+  if (isUntitledThreadName(title)) {
     return (
       <span className="block min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
         {createdAt ? formatDay(createdAt) : `Thread ${id ? id.substring(id.length - 5) : ''}`}

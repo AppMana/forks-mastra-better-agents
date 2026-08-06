@@ -161,15 +161,21 @@ test.describe('workspace uploads from the composer', () => {
     expect(upload.uploaded[0]?.workspacePath).toBe(announcedPathFor(fileName));
     await expectOnDiskIfConfigured(fileName, content);
 
-    // The drop flow announces in the composer text itself.
-    await expect
-      .poll(async () => composerInput(page).inputValue(), {
-        timeout: 30_000,
-        message: 'the composer never announced the dropped file',
-      })
-      .toContain(announcedPathFor(fileName));
+    // A drop ends in a chip, exactly like the "+" dialog: the announcement is
+    // for the agent and travels in the sent message, the chip is for the human.
+    // Writing the notice into the composer as editable prose is what this
+    // replaced, so the composer's own value must stay clean.
+    await expect(
+      page.locator('[data-attachments-row]'),
+      'the dropped file produced no chip, so nothing told the user it was taken',
+    ).toBeVisible({ timeout: 30_000 });
+    expect(
+      await composerInput(page).inputValue(),
+      'a drop must not write the upload notice into the composer as editable prose',
+    ).not.toContain(announcedPathFor(fileName));
 
     const captured = await captureAgentSend(page, agentId, announcedPathFor(fileName));
+    await composerInput(page).fill('Dropped for the record.');
     await page.getByRole('button', { name: 'Send' }).click();
 
     await expect

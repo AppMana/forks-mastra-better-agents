@@ -47,7 +47,7 @@ export const ToolBadge = ({
     // show a JSON envelope whose one interesting value is a truncated string
     // with escaped newlines. The raw text is what is actually arriving, so show
     // that, and switch to the formatted arguments when the call lands.
-    argSlot = <ToolResultView value={argsText} emptyLabel="Writing arguments…" data-testid="tool-args" />;
+    argSlot = <ToolResultView value={argsText} isStreaming emptyLabel="Writing arguments…" data-testid="tool-args" />;
   } else {
     try {
       const { __mastraMetadata: _, _background, ...formattedArgs } = typeof args === 'object' ? args : JSON.parse(args);

@@ -40,6 +40,15 @@ export interface ToolResultViewProps {
   value: unknown;
   /** Shown when a string payload is empty. */
   emptyLabel?: string;
+  /**
+   * The value is still being written and will grow on later renders.
+   *
+   * A finished payload is flushed so its last unterminated line still shows.
+   * Doing that to a value that is still arriving ends the line at every render,
+   * so each fragment became its own line and a streamed command rendered one
+   * token per line.
+   */
+  isStreaming?: boolean;
   /** Overrides for the caps above, when a call site needs a different budget. */
   maxLines?: number;
   maxLineLength?: number;
@@ -60,6 +69,7 @@ export interface ToolResultViewProps {
 export const ToolResultView = ({
   value,
   emptyLabel = 'No output',
+  isStreaming = false,
   maxLines = TOOL_RESULT_MAX_LINES,
   maxLineLength = TOOL_RESULT_MAX_LINE_LENGTH,
   maxHeight = TOOL_RESULT_MAX_HEIGHT,
@@ -70,7 +80,8 @@ export const ToolResultView = ({
     return (
       <StreamTailPreview
         source={value}
-        done
+        isStreaming={isStreaming}
+        done={!isStreaming}
         maxLines={maxLines}
         maxLineLength={maxLineLength}
         maxHeight={maxHeight}
