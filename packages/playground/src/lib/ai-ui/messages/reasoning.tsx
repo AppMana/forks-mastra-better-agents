@@ -20,7 +20,18 @@ export const Reasoning = ({ text, status }: ReasoningMessagePartProps) => {
 
   return (
     <div className="mb-2 space-y-2">
-      <button onClick={() => setOverride(isCollapsed ? false : true)} className="flex items-center gap-2">
+      {/* Named for what clicking it does. Without an accessible name the
+          control is unreachable by name for a screen reader and invisible to
+          anything asking "is this turn's thinking folded away, or is it running
+          down the page as prose" — which is exactly the question asked of a
+          backend whose reasoning arrives in a shape the renderer might not
+          have understood. */}
+      <button
+        onClick={() => setOverride(isCollapsed ? false : true)}
+        aria-label={`${isCollapsed ? 'Show' : 'Hide'} reasoning`}
+        aria-expanded={!isCollapsed}
+        className="flex items-center gap-2"
+      >
         <Icon>
           <ChevronUpIcon className={cn('transition-all', isCollapsed ? 'rotate-90' : 'rotate-180')} />
         </Icon>

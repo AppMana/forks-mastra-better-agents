@@ -22,6 +22,8 @@ import {
 } from '../prefill-status';
 import type { PrefillSlot } from '../prefill-status';
 import { sandboxStatusUrl } from '@/domains/workspace/sandbox-status';
+import { ThreadRuntimeStateProvider } from '@/lib/ai-ui/thread-runtime-state';
+import type { ThreadRuntimeState } from '@/lib/ai-ui/thread-runtime-state';
 import { server } from '@/test/msw-server';
 
 afterEach(cleanup);
@@ -331,6 +333,42 @@ describe('RunProgressIndicator while the sandbox starts', () => {
     render(<RunProgressIndicator />);
 
     await waitFor(() => expect(statusLine()).toBe('Downloading the workspace image… step 5 of 8'));
+  });
+
+  it('asks about the CONVERSATION whose pod the run is waiting on', async () => {
+    // A poll with no thread is answered about the user's thread-less
+    // workspace, whose `ws-<sub>` object no chat creates since workspaces
+    // became per conversation -- observed live on 2026-08-06 answering
+    // `requested`, step 0, for the whole of a turn whose pod was Running.
+    auiMessages.current = [runningToolMessage('mastra_workspace_execute_command', { command: 'uv run analyze.py' })];
+    const asked: string[] = [];
+    server.use(
+      http.get(prefillStatusUrl(), () => HttpResponse.json({ slots: [] })),
+      http.get(sandboxStatusUrl(), ({ request }) => {
+        asked.push(new URL(request.url).searchParams.get('threadId') ?? '');
+        return HttpResponse.json({ status: startingStatus });
+      }),
+    );
+
+    render(
+      <ThreadRuntimeStateProvider
+        value={
+          {
+            threadId: 'thread-42',
+            isStreaming: true,
+            canSendWhileStreaming: false,
+            cancelStream: () => {},
+            pendingSignals: [],
+            hasPendingMessages: false,
+          } as ThreadRuntimeState
+        }
+      >
+        <RunProgressIndicator />
+      </ThreadRuntimeStateProvider>,
+    );
+
+    await waitFor(() => expect(asked.length).toBeGreaterThan(0));
+    expect(asked.every(threadId => threadId === 'thread-42')).toBe(true);
   });
 
   it('never blames the sandbox for a write, which goes over WebDAV', async () => {

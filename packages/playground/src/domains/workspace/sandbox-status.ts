@@ -24,10 +24,25 @@ export interface SandboxStatus {
   ready: boolean;
 }
 
-export const sandboxStatusUrl = (workspaceId?: string) =>
-  workspaceId
-    ? `${appRoute('/workspace/sandbox-status')}?workspaceId=${encodeURIComponent(workspaceId)}`
-    : appRoute('/workspace/sandbox-status');
+/**
+ * What the caller is waiting on. A chat asks by CONVERSATION (`threadId`),
+ * because a workspace pod belongs to one conversation and asking without it
+ * observes the user's thread-less workspace instead — a different object, whose
+ * phase says nothing about the run on screen. The workspace page, which has no
+ * conversation, asks by `workspaceId`.
+ */
+export interface SandboxStatusTarget {
+  workspaceId?: string;
+  threadId?: string;
+}
+
+export const sandboxStatusUrl = (target: SandboxStatusTarget = {}) => {
+  const query = new URLSearchParams();
+  if (target.threadId) query.set('threadId', target.threadId);
+  else if (target.workspaceId) query.set('workspaceId', target.workspaceId);
+  const path = appRoute('/workspace/sandbox-status');
+  return query.size > 0 ? `${path}?${query.toString()}` : path;
+};
 
 export const SANDBOX_STATUS_POLL_INTERVAL_MS = 2000;
 
@@ -38,11 +53,11 @@ export function sandboxPercent(status: SandboxStatus): number | null {
 }
 
 export async function fetchSandboxStatus(
-  workspaceId?: string,
+  target: SandboxStatusTarget = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<SandboxStatus | null> {
   try {
-    const response = await fetchImpl(sandboxStatusUrl(workspaceId), { credentials: 'include' });
+    const response = await fetchImpl(sandboxStatusUrl(target), { credentials: 'include' });
     if (!response.ok) return null;
     const body = (await response.json()) as { status?: SandboxStatus | null };
     const status = body.status;

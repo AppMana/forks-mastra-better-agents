@@ -103,6 +103,106 @@ export function filePreviewFor(content: string): FilePreview {
 }
 
 /**
+ * `edit_file` is the one file tool whose interesting content is a CHANGE, not a
+ * file: it carries `old_string` and `new_string` and nothing else about the
+ * file. Rendering only the replacement (what the write badge does) shows what
+ * the file will say and hides what it said, which is the half the reader needs
+ * to judge the edit.
+ */
+export function isFileDiffTool(toolName: string): boolean {
+  return canonicalToolName(toolName) === WORKSPACE_TOOLS.FILESYSTEM.EDIT_FILE;
+}
+
+export type DiffLineKind = 'context' | 'removed' | 'added';
+
+export interface DiffLine {
+  kind: DiffLineKind;
+  text: string;
+}
+
+/** Lines the two sides share, at the head and the tail, shown as context. */
+const DIFF_CONTEXT_LINES = 3;
+
+/**
+ * The edit as a unified diff.
+ *
+ * `old_string` and `new_string` usually share their first and last lines — the
+ * model is told to include surrounding context so the match is unique — so
+ * those shared lines are shown ONCE, as context, instead of as a removal
+ * immediately followed by an identical addition. What is left is the change.
+ *
+ * Only the ends are matched, not the middle: a real line-by-line diff of two
+ * snippets buys very little here (the snippets are small and the change is
+ * usually contiguous) and it is a lot of machinery to have wrong.
+ */
+export function fileDiffFor(args: FileToolArgs | undefined): DiffLine[] {
+  const removedText = typeof args?.old_string === 'string' ? args.old_string : '';
+  const addedText = typeof args?.new_string === 'string' ? args.new_string : '';
+  if (removedText === '' && addedText === '') return [];
+
+  const removed = removedText === '' ? [] : removedText.split('\n');
+  const added = addedText === '' ? [] : addedText.split('\n');
+
+  let head = 0;
+  while (head < removed.length && head < added.length && removed[head] === added[head]) head += 1;
+
+  let tail = 0;
+  while (
+    tail < removed.length - head &&
+    tail < added.length - head &&
+    removed[removed.length - 1 - tail] === added[added.length - 1 - tail]
+  ) {
+    tail += 1;
+  }
+
+  const lines: DiffLine[] = [];
+  for (const text of removed.slice(Math.max(0, head - DIFF_CONTEXT_LINES), head)) {
+    lines.push({ kind: 'context', text });
+  }
+  for (const text of removed.slice(head, removed.length - tail)) lines.push({ kind: 'removed', text });
+  for (const text of added.slice(head, added.length - tail)) lines.push({ kind: 'added', text });
+  for (const text of removed.slice(removed.length - tail, removed.length - tail + DIFF_CONTEXT_LINES)) {
+    lines.push({ kind: 'context', text });
+  }
+  return lines;
+}
+
+export interface DiffPreview {
+  lines: DiffLine[];
+  truncated: boolean;
+  omittedChars: number;
+  omittedLines: number;
+  added: number;
+  removed: number;
+}
+
+/**
+ * The head of a diff, under the SAME caps a written file's preview uses: an
+ * edit can be as unbounded as a write (a whole vendored file replaced in one
+ * call), and the two must not disagree about how much of a change the
+ * transcript is willing to hold.
+ */
+export function fileDiffPreviewFor(lines: DiffLine[]): DiffPreview {
+  const kept: DiffLine[] = [];
+  let chars = 0;
+  for (const line of lines) {
+    if (kept.length >= FILE_PREVIEW_MAX_LINES || chars + line.text.length > FILE_PREVIEW_MAX_CHARS) break;
+    kept.push(line);
+    chars += line.text.length + 1;
+  }
+
+  const total = lines.reduce((sum, line) => sum + line.text.length + 1, 0);
+  return {
+    lines: kept,
+    truncated: kept.length < lines.length,
+    omittedLines: lines.length - kept.length,
+    omittedChars: total - chars,
+    added: lines.filter(line => line.kind === 'added').length,
+    removed: lines.filter(line => line.kind === 'removed').length,
+  };
+}
+
+/**
  * The Shiki language for a path, or undefined when the highlighter has no
  * grammar for it — in which case the block renders as plain text rather than
  * pulling in a grammar the bundle does not carry.

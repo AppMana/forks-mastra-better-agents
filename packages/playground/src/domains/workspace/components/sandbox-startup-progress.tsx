@@ -67,7 +67,7 @@ export const SandboxStartupProgress = ({ workspaceId }: { workspaceId?: string }
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
-      const next = await fetchSandboxStatus(workspaceId);
+      const next = await fetchSandboxStatus({ workspaceId });
       if (!cancelled) setStatus(next);
     };
     void poll();

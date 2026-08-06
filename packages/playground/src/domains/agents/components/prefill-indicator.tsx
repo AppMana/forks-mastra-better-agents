@@ -7,6 +7,7 @@ import { SANDBOX_STATUS_POLL_INTERVAL_MS, fetchSandboxStatus } from '@/domains/w
 import type { SandboxStatus } from '@/domains/workspace/sandbox-status';
 import { activeToolLabel, isWaitingOnSandbox } from '@/lib/ai-ui/messages/run-part-status';
 import type { RunPartLike } from '@/lib/ai-ui/messages/run-part-status';
+import { useThreadRuntimeState } from '@/lib/ai-ui/thread-runtime-state';
 
 export interface PrefillIndicatorViewProps {
   progress: PrefillProgress | null;
@@ -122,7 +123,7 @@ const EMPTY_PARTS: readonly RunPartLike[] = [];
  * not ask, both because the answer would be about some other sandbox and
  * because an idle thread has no business polling.
  */
-const useSandboxStartupStatus = (enabled: boolean): SandboxStatus | null => {
+const useSandboxStartupStatus = (enabled: boolean, threadId: string | undefined): SandboxStatus | null => {
   const [status, setStatus] = useState<SandboxStatus | null>(null);
 
   useEffect(() => {
@@ -133,7 +134,11 @@ const useSandboxStartupStatus = (enabled: boolean): SandboxStatus | null => {
 
     let cancelled = false;
     const poll = async () => {
-      const next = await fetchSandboxStatus();
+      // Asked by CONVERSATION: the pod this run is waiting on is the
+      // conversation's own, and a poll that does not name it is answered about
+      // the user's thread-less workspace — an object no chat creates, which
+      // reads as a workspace stuck at the first step of allocation.
+      const next = await fetchSandboxStatus({ threadId });
       if (!cancelled) setStatus(next);
     };
     void poll();
@@ -142,7 +147,7 @@ const useSandboxStartupStatus = (enabled: boolean): SandboxStatus | null => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [enabled]);
+  }, [enabled, threadId]);
 
   return status;
 };
@@ -166,7 +171,8 @@ export const RunProgressIndicator = () => {
   // Only the three sandbox tools can be waiting on a pod, so only they poll.
   // A `write_file` is WebDAV: it never starts a sandbox, and reporting one
   // would point at the wrong thing entirely.
-  const sandbox = useSandboxStartupStatus(isWaitingOnSandbox(parts));
+  const { threadId } = useThreadRuntimeState();
+  const sandbox = useSandboxStartupStatus(isWaitingOnSandbox(parts), threadId);
   const activity = activeToolLabel(parts, sandbox);
 
   return <PrefillIndicator activity={activity} />;

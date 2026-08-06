@@ -614,6 +614,7 @@ export function MastraRuntimeProvider({
   return (
     <ThreadRuntimeStateProvider
       value={{
+        threadId,
         isStreaming: isRunningStream || isAwaitingToolApproval,
         canSendWhileStreaming: getCanSendWhileStreaming({
           isSupportedModel,
