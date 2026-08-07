@@ -14,6 +14,7 @@ import { useThreadRuntimeState } from './thread-runtime-state';
 import { BrowserThumbnail, useBrowserSession } from '@/domains/agents';
 import { ComposerModelSettings } from '@/domains/agents/components/composer-model-settings';
 import { ComposerModelSwitcher, ComposerModelWarning } from '@/domains/agents/components/composer-model-switcher';
+import { ComposerReasoningEffort } from '@/domains/agents/components/composer-reasoning-effort';
 import { RunProgressIndicator } from '@/domains/agents/components/prefill-indicator';
 import { usePermissions } from '@/domains/auth/hooks/use-permissions';
 import { useThreadInput } from '@/domains/conversation';
@@ -296,12 +297,17 @@ export const ComposerActionRow = ({
       <WorkspaceUploadProgressBar progress={uploadProgress} />
       {/* Keep action buttons above the switcher when this row wraps. */}
       <div className="flex flex-wrap-reverse justify-between items-center gap-2 px-1.5 pb-1.5">
-        {showModelSwitcher && agentId && (
+        {agentId && (
           <div className="flex items-center gap-1.5 shrink-0 max-w-full">
-            <div className="rounded-full bg-surface3 border border-border1 transition-colors duration-normal focus-within:border-border2">
-              <ComposerModelSwitcher agentId={agentId} />
-            </div>
-            <ComposerModelSettings agentId={agentId} />
+            {showModelSwitcher && (
+              <>
+                <div className="rounded-full bg-surface3 border border-border1 transition-colors duration-normal focus-within:border-border2">
+                  <ComposerModelSwitcher agentId={agentId} />
+                </div>
+                <ComposerModelSettings agentId={agentId} />
+              </>
+            )}
+            <ComposerReasoningEffort />
           </div>
         )}
 

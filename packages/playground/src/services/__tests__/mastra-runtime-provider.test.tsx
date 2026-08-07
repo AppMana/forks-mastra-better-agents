@@ -452,4 +452,47 @@ describe('MastraRuntimeProvider', () => {
       expect(mocks.setStreamProgress).toHaveBeenCalledWith(progress);
     });
   });
+
+  describe('reasoning effort', () => {
+    const send = async (modelSettings: Record<string, unknown>) => {
+      render(
+        <MastraRuntimeProvider
+          agentId="agent-1"
+          threadId="thread-1"
+          initialMessages={[]}
+          modelVersion="v2"
+          settings={{ modelSettings } as any}
+        >
+          <div />
+        </MastraRuntimeProvider>,
+      );
+
+      await act(async () => {
+        await mocks.runtimeProps.onNew({ content: [{ type: 'text', text: 'think about it' }] });
+      });
+
+      return mocks.sendMessage.mock.calls.at(-1)?.[0]?.modelSettings?.providerOptions;
+    };
+
+    it('sends the effort the agent declares when the user has chosen nothing', async () => {
+      const providerOptions = await send({
+        providerOptions: { 'openai-compatible': { reasoningEffort: 'max' } },
+      });
+
+      expect(providerOptions).toEqual({ 'openai-compatible': { reasoningEffort: 'max' } });
+    });
+
+    it.each(['none', 'low', 'medium', 'high', 'max'])('sends %s once the composer selects it', async effort => {
+      const providerOptions = await send({
+        reasoningEffort: effort,
+        providerOptions: { 'openai-compatible': { reasoningEffort: 'max' } },
+      });
+
+      expect(providerOptions).toEqual({ 'openai-compatible': { reasoningEffort: effort } });
+    });
+
+    it('sends nothing extra when no effort is in play', async () => {
+      expect(await send({})).toBeUndefined();
+    });
+  });
 });

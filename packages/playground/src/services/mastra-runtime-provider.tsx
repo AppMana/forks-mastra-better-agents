@@ -26,6 +26,7 @@ import { ToolCallProvider } from './tool-call-provider';
 import { useThreadTitlePoll } from './use-thread-title-poll';
 import { useObservationalMemoryContext } from '@/domains/agents/context';
 import { useWorkingMemory } from '@/domains/agents/context/agent-working-memory-context';
+import { withReasoningEffort } from '@/domains/agents/utils/reasoning-effort';
 import { useMemoryConfig } from '@/domains/memory/hooks';
 import { useTracingSettings } from '@/domains/observability/context/tracing-settings-context';
 import { useAdapters } from '@/lib/ai-ui/hooks/use-adapters';
@@ -298,6 +299,7 @@ export function MastraRuntimeProvider({
     chatWithGenerate,
     chatWithNetwork,
     providerOptions,
+    reasoningEffort,
     requireToolApproval,
   } = settings?.modelSettings ?? {};
 
@@ -310,7 +312,7 @@ export function MastraRuntimeProvider({
     topP,
     seed,
     maxTokens,
-    providerOptions,
+    providerOptions: withReasoningEffort(providerOptions, reasoningEffort),
     maxSteps,
     requireToolApproval,
   };

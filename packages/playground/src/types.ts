@@ -64,6 +64,7 @@ export interface ModelSettings {
   topP?: number;
   seed?: number;
   providerOptions?: LLMStepResult['providerMetadata'];
+  reasoningEffort?: string;
   chatWithGenerateLegacy?: boolean;
   chatWithGenerate?: boolean;
   chatWithLegacyStream?: boolean;
